@@ -1,0 +1,690 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  BUSINESS_OWNER
+  BUSINESS_STAFF
+  DRIVER
+}
+
+enum BusinessCategory {
+  FOOD
+  PHARMACY
+  BEVERAGE_DISTRIBUTOR
+}
+
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  ON_ROUTE
+  PAUSED
+}
+
+enum OnboardingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum VehicleType {
+  MOTORCYCLE
+  CAR
+  UTILITY
+  VAN
+}
+
+enum CargoCategory {
+  HOT
+  COLD
+  FROZEN
+  AMBIENT
+  FRAGILE
+  BEVERAGE
+  MEDICINE
+  OTHER
+}
+
+enum DeliveryServiceLevel {
+  ECONOMY
+  SMART
+  EXPRESS
+}
+
+enum ReadinessStatus {
+  PREPARING
+  READY_FOR_PICKUP
+}
+
+enum DeliveryStatus {
+  CREATED
+  WAITING_POOL
+  MATCHING
+  OFFERED
+  ASSIGNED
+  PICKUP_PENDING
+  PICKED_UP
+  IN_TRANSIT
+  ARRIVING
+  DELIVERED
+  FAILED
+  CANCELLED
+  RETURN_REQUIRED
+  RETURNING
+  RETURNED
+}
+
+enum RouteStatus {
+  BUILDING
+  OFFERING
+  ASSIGNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum StopType {
+  PICKUP
+  DROPOFF
+}
+
+enum StopStatus {
+  PENDING
+  ARRIVED
+  COMPLETED
+  SKIPPED
+}
+
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum OfferType {
+  INSERTION
+  NEW_ROUTE
+}
+
+enum ProofMethod {
+  PIN
+  CUSTOMER_CONFIRMATION
+  PHOTO
+  ADMIN
+}
+
+enum IncidentType {
+  CUSTOMER_UNAVAILABLE
+  WRONG_ADDRESS
+  BUSINESS_DELAY
+  PRODUCT_DAMAGED
+  DRIVER_BREAKDOWN
+  ACCIDENT
+  CUSTOMER_REFUSED
+  OTHER
+}
+
+enum WalletType {
+  DRIVER
+  BUSINESS
+  PLATFORM
+}
+
+enum TransactionType {
+  DELIVERY_EARNING
+  BONUS
+  TIP
+  ADJUSTMENT
+  PAYOUT
+  REFUND
+  CHARGE
+}
+
+enum BillingMode {
+  PREPAID
+  POSTPAID
+}
+
+enum IdentityType {
+  BUSINESS
+  DRIVER
+  CUSTOMER
+}
+
+enum MessageStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  SENDING
+  SENT
+  FAILED
+}
+
+model User {
+  id            String          @id @default(uuid()) @db.Uuid
+  email         String          @unique
+  passwordHash  String
+  name          String
+  role          UserRole
+  active        Boolean         @default(true)
+  businessId    String?         @db.Uuid
+  business      Business?       @relation(fields: [businessId], references: [id])
+  driver        Driver?
+  refreshTokens RefreshToken[]
+  consents      ConsentRecord[]
+  createdAt     DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime        @updatedAt @db.Timestamptz(3)
+  deletedAt     DateTime?       @db.Timestamptz(3)
+
+  @@index([businessId])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  familyId  String    @db.Uuid
+  expiresAt DateTime  @db.Timestamptz(3)
+  revokedAt DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, familyId])
+}
+
+model Business {
+  id                 String           @id @default(uuid()) @db.Uuid
+  legalName          String
+  tradeName          String
+  document           String           @unique
+  phone              String           @unique
+  email              String
+  active             Boolean          @default(true)
+  category           BusinessCategory @default(FOOD)
+  billingMode        BillingMode      @default(POSTPAID)
+  businessReadyScore Int              @default(100)
+  users              User[]
+  branches           BusinessBranch[]
+  deliveries         Delivery[]
+  wallet             Wallet?
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+}
+
+model BusinessBranch {
+  id         String                                @id @default(uuid()) @db.Uuid
+  businessId String                                @db.Uuid
+  business   Business                              @relation(fields: [businessId], references: [id])
+  name       String
+  address    String
+  latitude   Float
+  longitude  Float
+  location   Unsupported("geography(Point,4326)")?
+  timezone   String                                @default("America/Sao_Paulo")
+  active     Boolean                               @default(true)
+  deliveries Delivery[]
+  createdAt  DateTime                              @default(now()) @db.Timestamptz(3)
+
+  @@index([businessId])
+}
+
+model Driver {
+  id                   String            @id @default(uuid()) @db.Uuid
+  userId               String            @unique @db.Uuid
+  user                 User              @relation(fields: [userId], references: [id])
+  phone                String            @unique
+  status               DriverStatus      @default(OFFLINE)
+  onboardingStatus     OnboardingStatus  @default(PENDING)
+  rating               Int               @default(500)
+  reliabilityScore     Int               @default(100)
+  maxCapacityUnits     Int               @default(100)
+  currentCapacityUnits Int               @default(0)
+  acceptNewOrders      Boolean           @default(true)
+  currentRouteId       String?           @unique @db.Uuid
+  lastLocationAt       DateTime?         @db.Timestamptz(3)
+  locationConsentAt    DateTime?         @db.Timestamptz(3)
+  vehicles             Vehicle[]
+  documents            DriverDocument[]
+  routes               Route[]
+  deliveries           Delivery[]
+  offers               RouteOffer[]
+  currentLocation      DriverLocation?
+  locationHistory      LocationHistory[]
+  wallet               Wallet?
+  earnings             DriverEarning[]
+  createdAt            DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@index([status, onboardingStatus])
+}
+
+model Vehicle {
+  id                   String          @id @default(uuid()) @db.Uuid
+  driverId             String          @db.Uuid
+  driver               Driver          @relation(fields: [driverId], references: [id])
+  type                 VehicleType     @default(MOTORCYCLE)
+  plate                String          @unique
+  brand                String?
+  model                String?
+  year                 Int?
+  capacityUnits        Int             @default(100)
+  weightCapacityGrams  Int?
+  volumeCapacityCm3    Int?
+  compatibleCategories CargoCategory[] @default([])
+  active               Boolean         @default(true)
+
+  @@index([driverId, active])
+}
+
+model DriverDocument {
+  id         String           @id @default(uuid()) @db.Uuid
+  driverId   String           @db.Uuid
+  driver     Driver           @relation(fields: [driverId], references: [id])
+  type       String
+  fileUrl    String
+  status     OnboardingStatus @default(PENDING)
+  expiresAt  DateTime?        @db.Timestamptz(3)
+  reviewedAt DateTime?        @db.Timestamptz(3)
+
+  @@index([driverId])
+}
+
+model DriverLocation {
+  driverId  String                                @id @db.Uuid
+  driver    Driver                                @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  latitude  Float
+  longitude Float
+  location  Unsupported("geography(Point,4326)")?
+  accuracy  Float?
+  speed     Float?
+  heading   Float?
+  timestamp DateTime                              @db.Timestamptz(3)
+  expiresAt DateTime                              @db.Timestamptz(3)
+
+  @@index([expiresAt])
+}
+
+model LocationHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  driverId  String   @db.Uuid
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  routeId   String?  @db.Uuid
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+  speed     Float?
+  heading   Float?
+  timestamp DateTime @db.Timestamptz(3)
+
+  @@index([driverId, timestamp])
+  @@index([timestamp])
+}
+
+model Delivery {
+  id                            String                                @id @default(uuid()) @db.Uuid
+  businessId                    String                                @db.Uuid
+  business                      Business                              @relation(fields: [businessId], references: [id])
+  branchId                      String                                @db.Uuid
+  branch                        BusinessBranch                        @relation(fields: [branchId], references: [id])
+  driverId                      String?                               @db.Uuid
+  driver                        Driver?                               @relation(fields: [driverId], references: [id])
+  routeId                       String?                               @db.Uuid
+  route                         Route?                                @relation(fields: [routeId], references: [id])
+  externalReference             String?
+  customerName                  String
+  customerPhone                 String?
+  customerOptInAt               DateTime?                             @db.Timestamptz(3)
+  pickupLatitude                Float
+  pickupLongitude               Float
+  pickupLocation                Unsupported("geography(Point,4326)")?
+  dropoffLatitude               Float
+  dropoffLongitude              Float
+  dropoffLocation               Unsupported("geography(Point,4326)")?
+  complement                    String?
+  items                         Json                                  @default("[]")
+  status                        DeliveryStatus                        @default(WAITING_POOL)
+  readinessStatus               ReadinessStatus                       @default(PREPARING)
+  serviceLevel                  DeliveryServiceLevel                  @default(SMART)
+  category                      CargoCategory                         @default(AMBIENT)
+  capacityUnits                 Int
+  weightGrams                   Int?
+  volumeCm3                     Int?
+  temperatureRequirement        String?
+  packageType                   String?
+  readyAt                       DateTime?                             @db.Timestamptz(3)
+  estimatedReadyAt              DateTime?                             @db.Timestamptz(3)
+  pickupDeadline                DateTime                              @db.Timestamptz(3)
+  deliveryDeadline              DateTime                              @db.Timestamptz(3)
+  maxDeliveryDurationSeconds    Int
+  pickedUpAt                    DateTime?                             @db.Timestamptz(3)
+  deliveredAt                   DateTime?                             @db.Timestamptz(3)
+  pickupWaitTimeSeconds         Int?
+  revenueCents                  Int
+  driverPayoutCents             Int                                   @default(0)
+  tipCents                      Int                                   @default(0)
+  verificationCodeHash          String
+  verificationAttempts          Int                                   @default(0)
+  verifiedAt                    DateTime?                             @db.Timestamptz(3)
+  lockedAt                      DateTime?                             @db.Timestamptz(3)
+  customerConfirmationTokenHash String?                               @unique
+  confirmationExpiresAt         DateTime?                             @db.Timestamptz(3)
+  cancellationReason            String?
+  stops                         RouteStop[]
+  offerDeliveries               OfferDelivery[]
+  proof                         DeliveryProof?
+  incidents                     DeliveryIncident[]
+  earning                       DriverEarning?
+  waitFee                       WaitFee?
+  createdAt                     DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt                     DateTime                              @updatedAt @db.Timestamptz(3)
+
+  @@unique([businessId, externalReference])
+  @@index([status, readinessStatus, createdAt])
+  @@index([branchId, createdAt])
+  @@index([businessId, createdAt])
+  @@index([driverId])
+  @@index([routeId])
+}
+
+model Route {
+  id                       String       @id @default(uuid()) @db.Uuid
+  driverId                 String       @db.Uuid
+  driver                   Driver       @relation(fields: [driverId], references: [id])
+  status                   RouteStatus  @default(ASSIGNED)
+  estimatedDistanceMeters  Int          @default(0)
+  estimatedDurationSeconds Int          @default(0)
+  startedAt                DateTime?    @db.Timestamptz(3)
+  completedAt              DateTime?    @db.Timestamptz(3)
+  grossValueCents          Int          @default(0)
+  driverPayoutCents        Int          @default(0)
+  platformMarginCents      Int          @default(0)
+  version                  Int          @default(1)
+  stops                    RouteStop[]
+  deliveries               Delivery[]
+  offers                   RouteOffer[]
+  createdAt                DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime     @updatedAt @db.Timestamptz(3)
+
+  @@index([driverId, status])
+  @@index([status])
+}
+
+model RouteStop {
+  id                 String                                @id @default(uuid()) @db.Uuid
+  routeId            String                                @db.Uuid
+  route              Route                                 @relation(fields: [routeId], references: [id])
+  deliveryId         String                                @db.Uuid
+  delivery           Delivery                              @relation(fields: [deliveryId], references: [id])
+  type               StopType
+  sequence           Int
+  latitude           Float
+  longitude          Float
+  location           Unsupported("geography(Point,4326)")?
+  estimatedArrivalAt DateTime?                             @db.Timestamptz(3)
+  arrivedAt          DateTime?                             @db.Timestamptz(3)
+  completedAt        DateTime?                             @db.Timestamptz(3)
+  status             StopStatus                            @default(PENDING)
+
+  @@unique([routeId, sequence])
+  @@unique([routeId, deliveryId, type])
+  @@index([deliveryId])
+}
+
+model RouteOffer {
+  id                        String          @id @default(uuid()) @db.Uuid
+  routeId                   String?         @db.Uuid
+  route                     Route?          @relation(fields: [routeId], references: [id])
+  driverId                  String          @db.Uuid
+  driver                    Driver          @relation(fields: [driverId], references: [id])
+  offerType                 OfferType
+  expectedRouteVersion      Int?
+  additionalDistanceMeters  Int
+  additionalDurationSeconds Int
+  offeredPayoutCents        Int
+  revenueCents              Int
+  platformMarginCents       Int
+  plan                      Json
+  status                    OfferStatus     @default(PENDING)
+  expiresAt                 DateTime        @db.Timestamptz(3)
+  respondedAt               DateTime?       @db.Timestamptz(3)
+  deliveries                OfferDelivery[]
+  createdAt                 DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@index([driverId, status])
+  @@index([status, expiresAt])
+  @@index([routeId])
+}
+
+model OfferDelivery {
+  offerId    String     @db.Uuid
+  offer      RouteOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  deliveryId String     @db.Uuid
+  delivery   Delivery   @relation(fields: [deliveryId], references: [id])
+
+  @@id([offerId, deliveryId])
+  @@index([deliveryId])
+}
+
+model DeliveryProof {
+  id            String      @id @default(uuid()) @db.Uuid
+  deliveryId    String      @unique @db.Uuid
+  delivery      Delivery    @relation(fields: [deliveryId], references: [id])
+  method        ProofMethod
+  verifiedAt    DateTime    @default(now()) @db.Timestamptz(3)
+  latitude      Float?
+  longitude     Float?
+  photoUrl      String?
+  recipientName String?
+  metadata      Json        @default("{}")
+}
+
+model DeliveryIncident {
+  id          String       @id @default(uuid()) @db.Uuid
+  deliveryId  String       @db.Uuid
+  delivery    Delivery     @relation(fields: [deliveryId], references: [id])
+  type        IncidentType
+  notes       String?
+  attachments String[]     @default([])
+  createdBy   String       @db.Uuid
+  resolvedAt  DateTime?    @db.Timestamptz(3)
+  resolution  String?
+  createdAt   DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([deliveryId])
+}
+
+model WaitFee {
+  id              String   @id @default(uuid()) @db.Uuid
+  deliveryId      String   @unique @db.Uuid
+  delivery        Delivery @relation(fields: [deliveryId], references: [id])
+  waitSeconds     Int
+  billableSeconds Int
+  amountCents     Int
+  applied         Boolean  @default(false)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+}
+
+model Wallet {
+  id         String              @id @default(uuid()) @db.Uuid
+  type       WalletType
+  key        String              @unique
+  driverId   String?             @unique @db.Uuid
+  driver     Driver?             @relation(fields: [driverId], references: [id])
+  businessId String?             @unique @db.Uuid
+  business   Business?           @relation(fields: [businessId], references: [id])
+  entries    WalletTransaction[]
+  createdAt  DateTime            @default(now()) @db.Timestamptz(3)
+}
+
+model LedgerTransaction {
+  id             String              @id @default(uuid()) @db.Uuid
+  idempotencyKey String              @unique
+  referenceType  String
+  referenceId    String
+  description    String?
+  entries        WalletTransaction[]
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+}
+
+model WalletTransaction {
+  id                  String            @id @default(uuid()) @db.Uuid
+  walletId            String            @db.Uuid
+  wallet              Wallet            @relation(fields: [walletId], references: [id])
+  ledgerTransactionId String            @db.Uuid
+  ledgerTransaction   LedgerTransaction @relation(fields: [ledgerTransactionId], references: [id])
+  type                TransactionType
+  amountCents         Int
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@index([walletId, createdAt])
+  @@index([ledgerTransactionId])
+}
+
+model DriverEarning {
+  id          String   @id @default(uuid()) @db.Uuid
+  deliveryId  String   @unique @db.Uuid
+  delivery    Delivery @relation(fields: [deliveryId], references: [id])
+  driverId    String   @db.Uuid
+  driver      Driver   @relation(fields: [driverId], references: [id])
+  payoutCents Int
+  tipCents    Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([driverId, createdAt])
+}
+
+model WhatsAppIdentity {
+  id            String               @id @default(uuid()) @db.Uuid
+  phoneNumber   String               @unique
+  entityType    IdentityType
+  entityId      String               @db.Uuid
+  verifiedAt    DateTime?            @db.Timestamptz(3)
+  optInAt       DateTime?            @db.Timestamptz(3)
+  lastInboundAt DateTime?            @db.Timestamptz(3)
+  session       ConversationSession?
+
+  @@index([entityType, entityId])
+}
+
+model ConversationSession {
+  id         String           @id @default(uuid()) @db.Uuid
+  identityId String           @unique @db.Uuid
+  identity   WhatsAppIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  state      String
+  context    String
+  expiresAt  DateTime         @db.Timestamptz(3)
+  version    Int              @default(1)
+  updatedAt  DateTime         @updatedAt @db.Timestamptz(3)
+}
+
+model WhatsAppInbox {
+  id                String        @id @default(uuid()) @db.Uuid
+  externalMessageId String        @unique
+  sender            String
+  payload           String
+  status            MessageStatus @default(PENDING)
+  attempts          Int           @default(0)
+  leaseUntil        DateTime?     @db.Timestamptz(3)
+  errorCode         String?
+  receivedAt        DateTime      @default(now()) @db.Timestamptz(3)
+  processedAt       DateTime?     @db.Timestamptz(3)
+
+  @@index([status, receivedAt])
+}
+
+model MessageOutbox {
+  id                String        @id @default(uuid()) @db.Uuid
+  idempotencyKey    String        @unique
+  recipient         String
+  payload           String
+  status            MessageStatus @default(PENDING)
+  attempts          Int           @default(0)
+  nextAttemptAt     DateTime      @default(now()) @db.Timestamptz(3)
+  leaseUntil        DateTime?     @db.Timestamptz(3)
+  providerMessageId String?
+  lastErrorCode     String?
+  sentAt            DateTime?     @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([status, nextAttemptAt])
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid()) @db.Uuid
+  type        String
+  aggregateId String
+  payload     Json
+  processedAt DateTime? @db.Timestamptz(3)
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now()) @db.Timestamptz(3)
+  leaseUntil  DateTime? @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([processedAt, availableAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entityType, entityId, createdAt])
+}
+
+model ConsentRecord {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id])
+  purpose   String
+  granted   Boolean
+  version   String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, purpose])
+}
+
+model FraudFlag {
+  id         String   @id @default(uuid()) @db.Uuid
+  driverId   String?  @db.Uuid
+  deliveryId String?  @db.Uuid
+  type       String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([driverId, createdAt])
+}
+
+model ServiceZone {
+  id                   String                                      @id @default(uuid()) @db.Uuid
+  name                 String
+  city                 String
+  active               Boolean                                     @default(true)
+  timezone             String                                      @default("America/Sao_Paulo")
+  pricingMultiplierBps Int                                         @default(10000)
+  boundary             Unsupported("geometry(MultiPolygon,4326)")?
+  createdAt            DateTime                                    @default(now()) @db.Timestamptz(3)
+}
+
+model PrivacyRequest {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  type        String
+  status      String    @default("PENDING")
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  completedAt DateTime? @db.Timestamptz(3)
+
+  @@index([status])
+}
