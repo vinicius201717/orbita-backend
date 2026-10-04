@@ -4,8 +4,8 @@ Stack exclusiva `orbita-staging`, sem referências a recursos do projeto TradeOS
 O template cria VPC, subnet, internet gateway, rotas, grupo de segurança, função
 SSM e uma EC2 Ubuntu 24.04 `t3a.micro` (1 GiB), com 20 GiB gp3 criptografados.
 A administração usa Systems Manager, sem chave nem porta SSH. Somente 80/443
-aceitam conexões externas. O papel da instância usa AmazonSSMManagedInstanceCore;
-não concede acesso ao banco nem a recursos do outro projeto.
+aceitam conexões externas. O papel da instância permite somente registro no SSM e
+canais de sessão; não permite ler parâmetros, segredos ou bancos do outro projeto.
 
 ## Orçamento
 
