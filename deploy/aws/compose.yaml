@@ -1,0 +1,72 @@
+name: orbita-staging
+x-logging: &logging
+  driver: json-file
+  options: {max-size: 5m, max-file: "3"}
+x-app: &app
+  image: orbita-backend:local
+  env_file: /opt/orbita/config/backend.env
+  restart: unless-stopped
+  init: true
+  mem_limit: 224m
+  memswap_limit: 448m
+  logging: *logging
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+services:
+  postgres:
+    image: postgis/postgis:16-3.5
+    env_file: /opt/orbita/config/postgres.env
+    command: [postgres, -c, shared_buffers=32MB, -c, max_connections=30, -c, work_mem=2MB]
+    restart: unless-stopped
+    mem_limit: 224m
+    memswap_limit: 448m
+    shm_size: 64m
+    volumes: [postgres:/var/lib/postgresql/data]
+    logging: *logging
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U orbita -d orbita]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, /usr/local/etc/redis/redis.conf]
+    restart: unless-stopped
+    mem_limit: 96m
+    memswap_limit: 192m
+    volumes:
+      - redis:/data
+      - /opt/orbita/config/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    logging: *logging
+    healthcheck:
+      test: [CMD-SHELL, "redis-cli ping | grep -q NOAUTH"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  migrate:
+    image: orbita-migrate:local
+    env_file: /opt/orbita/config/backend.env
+    profiles: [migration]
+    mem_limit: 384m
+    memswap_limit: 768m
+    logging: *logging
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *app
+    ports: [127.0.0.1:3000:3000]
+    volumes: [documents:/app/.data/documents]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/api/v1/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+  worker:
+    <<: *app
+    command: [node, dist/worker.js]
+volumes:
+  postgres:
+  redis:
+  documents:
