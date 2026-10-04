@@ -1,0 +1,104 @@
+# Homologation environment. Review the monthly cost before applying this Blueprint.
+# NODE_ENV=development permits simulated map estimates; this is not a live delivery deployment.
+envVarGroups:
+  - name: orbita-staging
+    envVars:
+      - key: NODE_VERSION
+        value: 24.11.1
+      - key: NODE_ENV
+        value: development
+      - key: MAPS_PROVIDER
+        value: mock
+      - key: WHATSAPP_ENABLED
+        value: "false"
+      - key: REAL_PAYMENTS_ENABLED
+        value: "false"
+      - key: CORS_ORIGINS
+        value: https://orbita-frontend-phi.vercel.app
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: PIN_PEPPER
+        generateValue: true
+      - key: OUTBOX_ENCRYPTION_KEY_BASE64
+        generateValue: true
+
+databases:
+  - name: orbita-db
+    region: virginia
+    plan: 0.1c-256mb
+    postgresMajorVersion: "16"
+    databaseName: orbita
+    diskSizeGB: 1
+    storageAutoscalingEnabled: false
+    ipAllowList: []
+
+services:
+  - type: keyvalue
+    name: orbita-redis
+    region: virginia
+    plan: 256mb
+    maxmemoryPolicy: noeviction
+    persistenceMode: journal-snapshot
+    ipAllowList: []
+
+  - type: web
+    name: orbita-backend
+    runtime: node
+    repo: https://github.com/vinicius201717/orbita-backend
+    branch: codex/production
+    region: virginia
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: off
+    buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
+    preDeployCommand: npm run db:migrate
+    startCommand: node scripts/render-start.mjs api
+    healthCheckPath: /api/v1/health/live
+    disk:
+      name: orbita-documents
+      mountPath: /var/data/orbita
+      sizeGB: 1
+    envVars:
+      - fromGroup: orbita-staging
+      - key: DOCUMENT_STORAGE_DIR
+        value: /var/data/orbita/documents
+      - key: DATABASE_URL
+        fromDatabase:
+          name: orbita-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: orbita-redis
+          property: connectionString
+
+  - type: worker
+    name: orbita-worker
+    runtime: node
+    repo: https://github.com/vinicius201717/orbita-backend
+    branch: codex/production
+    region: virginia
+    plan: 0.5c-512mb
+    numInstances: 1
+    autoDeployTrigger: off
+    buildCommand: npm ci --include=dev && npm run prisma:generate && npm run build
+    preDeployCommand: npm run db:migrate
+    startCommand: node scripts/render-start.mjs worker
+    envVars:
+      - fromGroup: orbita-staging
+      - key: DATABASE_URL
+        fromDatabase:
+          name: orbita-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: orbita-redis
+          property: connectionString
+      - key: PUBLIC_BASE_URL
+        fromService:
+          type: web
+          name: orbita-backend
+          envVarKey: RENDER_EXTERNAL_URL
