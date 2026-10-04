@@ -4,6 +4,8 @@ import { Actor } from '../common/actor';
 import { DeliveriesService } from '../deliveries/deliveries.service';
 import { OutboxService } from '../common/outbox.service';
 import { IncidentDto } from './incidents.controller';
+import { DomainError } from '../common/domain-error';
+import { lockEntities } from '../common/locks';
 @Injectable()
 export class IncidentsService {
   constructor(
@@ -43,6 +45,21 @@ export class IncidentsService {
       where: { deliveryId: id },
       take: 50,
       orderBy: { createdAt: 'desc' },
+    });
+  }
+  async resolve(actor: Actor, deliveryId: string, incidentId: string, resolution: string) {
+    if (actor.role !== 'ADMIN') throw new DomainError('FORBIDDEN', 'Admin required', 403);
+    return this.db.transaction(async (tx) => {
+      await lockEntities(tx, [`incident:${incidentId}`]);
+      const incident = await tx.deliveryIncident.findFirst({ where: { id: incidentId, deliveryId } });
+      if (!incident) throw new DomainError('INCIDENT_NOT_FOUND', 'Incident not found', 404);
+      if (incident.resolvedAt) {
+        if (incident.resolution === resolution) return incident;
+        throw new DomainError('INCIDENT_ALREADY_RESOLVED', 'Incident resolution is immutable');
+      }
+      const result = await tx.deliveryIncident.update({ where: { id: incidentId }, data: { resolution, resolvedAt: new Date() } });
+      await tx.auditLog.create({ data: { actorId: actor.id, action: 'incident.resolved', entityType: 'DeliveryIncident', entityId: incidentId, metadata: { deliveryId, resolution } } });
+      return result;
     });
   }
 }

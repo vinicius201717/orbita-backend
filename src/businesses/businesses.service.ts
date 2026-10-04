@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Actor } from '../common/actor';
 import { DomainError } from '../common/domain-error';
 import { PrismaService } from '../infra/prisma.service';
-import { CreateBranchDto, CreateBusinessDto, UpdateBusinessDto } from './businesses.dto';
+import { CreateBranchDto, CreateBusinessDto, UpdateBusinessDto, UpdateBranchDto } from './businesses.dto';
 import { lockEntities } from '../common/locks';
 @Injectable()
 export class BusinessesService {
@@ -65,5 +65,18 @@ export class BusinessesService {
   async branches(actor: Actor, businessId: string) {
     this.assertAccess(actor, businessId);
     return this.db.businessBranch.findMany({ where: { businessId }, take: 100, orderBy: { id: 'asc' } });
+  }
+  async updateBranch(actor: Actor, businessId: string, branchId: string, dto: UpdateBranchDto) {
+    this.assertAccess(actor, businessId);
+    if (!['ADMIN', 'BUSINESS_OWNER'].includes(actor.role))
+      throw new DomainError('FORBIDDEN', 'Owner role required', 403);
+    return this.db.transaction(async (tx) => {
+      await lockEntities(tx, [`branch:${branchId}`]);
+      const branch = await tx.businessBranch.findFirst({ where: { id: branchId, businessId } });
+      if (!branch) throw new DomainError('BRANCH_NOT_FOUND', 'Branch not found', 404);
+      const updated = await tx.businessBranch.update({ where: { id: branchId }, data: dto });
+      await tx.auditLog.create({ data: { actorId: actor.id, action: 'branch.updated', entityType: 'BusinessBranch', entityId: branchId, metadata: { businessId, fields: Object.keys(dto) } } });
+      return updated;
+    });
   }
 }

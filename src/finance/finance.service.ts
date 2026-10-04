@@ -6,6 +6,23 @@ import { lockEntities } from '../common/locks';
 @Injectable()
 export class FinanceService {
   constructor(private readonly db: PrismaService) {}
+  async wallets(cursor?: string) {
+    const rows = await this.db.wallet.findMany({
+      take: 51, orderBy: { id: 'asc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { business: { select: { tradeName: true } }, driver: { select: { user: { select: { name: true } } } } },
+    });
+    const sums = await this.db.walletTransaction.groupBy({ by: ['walletId'], where: { walletId: { in: rows.slice(0, 50).map((row) => row.id) } }, _sum: { amountCents: true } });
+    return { items: rows.slice(0, 50).map(({ business, driver, ...wallet }) => ({
+      ...wallet, ownerName: business?.tradeName ?? driver?.user.name ?? 'ORBITA',
+      balanceCents: sums.find((sum) => sum.walletId === wallet.id)?._sum.amountCents ?? 0,
+    })), nextCursor: rows.length > 50 ? rows[49]?.id ?? null : null };
+  }
+  async walletDetail(id: string, cursor?: string) {
+    const wallet = await this.db.wallet.findUnique({ where: { id } });
+    if (!wallet) throw new DomainError('WALLET_NOT_FOUND', 'Wallet not found', 404);
+    return { ...wallet, ...await this.account(wallet.key, cursor) };
+  }
   async wallet(actor: Actor, cursor?: string) {
     if (!actor.driverId) throw new DomainError('DRIVER_REQUIRED', 'Driver required', 403);
     return this.account(`driver:${actor.driverId}`, cursor);

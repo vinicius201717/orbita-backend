@@ -9,7 +9,7 @@ import { CancelDto } from '../incidents/incidents.controller';
 import { MatchingEngineService } from '../matching/matching-engine.service';
 import { ServiceZonesService } from '../service-zones/service-zones.service';
 import { AdminService } from './admin.service';
-import { AdjustmentDto, ApproveDriverDto, IdentityDto, ZoneDto } from './admin.dto';
+import { AdjustmentDto, AdminWhatsAppIdentityDto, ApproveDriverDto, ZoneDto } from './admin.dto';
 import { CancellationService } from '../incidents/cancellation.service';
 @ApiTags('admin')
 @ApiBearerAuth()
@@ -24,6 +24,15 @@ export class AdminController {
     private readonly config: ConfigService,
     private readonly cancellations: CancellationService,
   ) {}
+  @Get('drivers/:id') driverDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.driverDetail(id);
+  }
+  @Get('wallets') wallets(@Query() query: CursorDto) {
+    return this.finance.wallets(query.cursor);
+  }
+  @Get('wallets/:id') walletDetail(@Param('id', ParseUUIDPipe) id: string, @Query() query: CursorDto) {
+    return this.finance.walletDetail(id, query.cursor);
+  }
   @Post('drivers/:id/review') review(
     @CurrentActor() actor: Actor,
     @Param('id', ParseUUIDPipe) id: string,
@@ -31,7 +40,7 @@ export class AdminController {
   ) {
     return this.service.driver(actor, id, dto);
   }
-  @Post('whatsapp-identities') identity(@CurrentActor() actor: Actor, @Body() dto: IdentityDto) {
+  @Post('whatsapp-identities') identity(@CurrentActor() actor: Actor, @Body() dto: AdminWhatsAppIdentityDto) {
     return this.service.identity(actor, dto);
   }
   @Post('deliveries/:id/confirm') proof(

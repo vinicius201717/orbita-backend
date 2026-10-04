@@ -19,9 +19,11 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AdminModule } from './admin/admin.module';
 import { JobsModule } from './jobs/jobs.module';
 import { MetricsController } from './common/metrics.controller';
+import { DocumentsModule } from './documents/documents.module';
 @Module({
   imports: [
     InfraModule,
+    DocumentsModule,
     AuthModule,
     BusinessesModule,
     DeliveriesModule,

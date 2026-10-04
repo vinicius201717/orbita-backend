@@ -1,4 +1,4 @@
-# Validação local — 2 de outubro de 2026
+# Validação local — 4 de outubro de 2026
 
 ## Evidências executadas
 
@@ -6,8 +6,9 @@
 - `npx tsc --noEmit -p tsconfig.json`: aplicação, testes, seed e scripts tipados.
 - `npm run lint`: ESLint sem warnings, sem `any` explícito e sem non-null assertions.
 - `npm run test:unit`: 28 testes em 8 suítes.
-- `npm run test:integration`: 29 testes em 4 suítes, contra PostgreSQL/PostGIS e Redis reais.
-- Três migrations aplicadas em `orbita` e `orbita_test`.
+- `npm run test:integration`: 35 testes em 7 suítes, contra PostgreSQL/PostGIS e Redis reais.
+- Cinco migrations aplicadas em `orbita` e `orbita_test`, incluindo identidade frontend e documentos privados.
+- `GET /auth/me`, edição de conta, troca de senha, rotas escopadas, edição de filial, consentimento WhatsApp, carteiras administrativas, resolução de incidentes e documentos privados cobertos pelo contrato exportado.
 - Seed executado e repetível sem sobrescrever dados existentes.
 - Simulador: 5/5 entregas concluídas, rotas encerradas, ledger creditado. Última execução: `6bc073a0-9d27-4a95-80a0-f80e51fb6f5a`, 11 passos.
 - API compilada e worker iniciados; health consultado por HTTP e Swagger disponível.
@@ -17,7 +18,7 @@
 
 | Área | Evidência |
 |---|---|
-| Auth/RBAC | Cadastro não promove ADMIN; acesso sem token bloqueado; refresh rotacionado e família revogada em replay |
+| Auth/RBAC | Cadastro não promove ADMIN; acesso sem token bloqueado; identidade projetada por ator; troca de senha invalida access/refresh anteriores |
 | Tenancy | Empresa não lê nem cria entregas em unidade alheia |
 | GPS | Redis aceita snapshot monotônico; worker persiste lote; offline remove presença |
 | Inserção | Enumeração de posições, pickup antes de dropoff, SLA, carga, categoria e economia |
@@ -32,6 +33,7 @@
 | Realtime | Empresas de uma rota compartilhada recebem somente o ID da rota quando muda uma entrega de outra empresa |
 | WhatsApp | Assinatura inválida, payload inválido, duplicação simultânea, máquina de estados, identidade desconhecida/conhecida e roteamento de botões |
 | Revogação WhatsApp | Contas excluídas/desativadas, telefone alterado, consentimento revogado e identidade reassociada bloqueiam operações e mensagens pendentes; PIN de cliente mantém consentimento próprio |
+| Documentos | Upload multipart limitado a 5 MB, assinatura PDF/PNG/JPEG conferida, conteúdo privado por ownership, hash verificado, revisão administrativa e reenvio auditado |
 | Infra/worker | Índices espaciais existentes, transação financeira vazia rejeitada no commit e job real BullMQ concluído com heartbeat |
 
 Os testes de roteamento dos botões isolam os métodos accept/reject; a atomicidade desses métodos é verificada separadamente nos testes de logística com PostgreSQL real.

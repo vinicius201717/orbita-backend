@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Patch } from '@nestjs/common';
 import { ApiBearerAuth, ApiProperty, ApiTags } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
@@ -27,6 +27,9 @@ export class IncidentDto {
   @ArrayMaxSize(5)
   @IsUrl({ protocols: ['https'], require_protocol: true }, { each: true })
   attachments?: string[];
+}
+export class ResolveIncidentDto {
+  @ApiProperty() @IsString() @MinLength(3) @MaxLength(2000) resolution: string;
 }
 @ApiTags('incidents')
 @ApiBearerAuth()
@@ -61,5 +64,14 @@ export class IncidentsController {
   }
   @Get(':id/incidents') list(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {
     return this.incidents.list(actor, id);
+  }
+  @Roles('ADMIN')
+  @Patch(':id/incidents/:incidentId/resolve') resolve(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('incidentId', ParseUUIDPipe) incidentId: string,
+    @Body() dto: ResolveIncidentDto,
+  ) {
+    return this.incidents.resolve(actor, id, incidentId, dto.resolution);
   }
 }

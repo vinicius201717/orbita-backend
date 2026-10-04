@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentActor, Roles } from '../auth/auth.decorators';
 import { Actor } from '../common/actor';
 import { BusinessesService } from './businesses.service';
-import { CreateBranchDto, CreateBusinessDto, UpdateBusinessDto } from './businesses.dto';
+import { CreateBranchDto, CreateBusinessDto, UpdateBusinessDto, UpdateBranchDto } from './businesses.dto';
 @ApiTags('businesses')
 @ApiBearerAuth()
 @Roles('ADMIN', 'BUSINESS_OWNER', 'BUSINESS_STAFF')
@@ -32,5 +32,14 @@ export class BusinessesController {
   }
   @Get(':id/branches') branches(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.branches(actor, id);
+  }
+  @Roles('ADMIN', 'BUSINESS_OWNER')
+  @Patch(':id/branches/:branchId') updateBranch(
+    @CurrentActor() actor: Actor,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('branchId', ParseUUIDPipe) branchId: string,
+    @Body() dto: UpdateBranchDto,
+  ) {
+    return this.service.updateBranch(actor, id, branchId, dto);
   }
 }

@@ -12,15 +12,17 @@ export class RateLimitGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     if (context.getClass().name === 'HealthController') return true;
     const scope = `${context.getClass().name}:${context.getHandler().name}`;
-    const limit = scope.includes('AuthController')
-      ? 15
-      : scope.toLowerCase().includes('verify')
+    const limit =
+      scope.includes('AuthController') &&
+      ['register', 'login', 'refresh', 'changePassword'].includes(context.getHandler().name)
         ? 15
-        : scope.toLowerCase().includes('location')
-          ? 180
-          : scope.includes('Webhook') || scope.includes('WhatsApp')
-            ? 300
-            : 120;
+        : scope.toLowerCase().includes('verify')
+          ? 15
+          : scope.toLowerCase().includes('location')
+            ? 180
+            : scope.includes('Webhook') || scope.includes('WhatsApp')
+              ? 300
+              : 120;
     const ipHash = createHash('sha256')
       .update(request.ip ?? request.socket.remoteAddress ?? 'unknown')
       .digest('hex');

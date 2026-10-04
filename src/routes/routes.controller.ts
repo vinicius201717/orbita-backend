@@ -1,13 +1,18 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentActor, Roles } from '../auth/auth.decorators';
 import { Actor } from '../common/actor';
 import { RoutesService } from './routes.service';
+import { RouteListDto } from './routes.dto';
 @ApiTags('routes')
 @ApiBearerAuth()
 @Controller('routes')
 export class RoutesController {
   constructor(private readonly service: RoutesService) {}
+  @Get()
+  list(@CurrentActor() actor: Actor, @Query() query: RouteListDto) {
+    return this.service.list(actor, query);
+  }
   @Get(':id')
   @ApiOperation({ summary: 'Read an authorized route; businesses see only their own deliveries' })
   get(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {

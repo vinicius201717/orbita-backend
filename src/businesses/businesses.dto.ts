@@ -12,6 +12,7 @@ import {
   IsOptional,
   IsTimeZone,
   IsNumber,
+  IsBoolean,
 } from 'class-validator';
 export class CreateBusinessDto {
   @ApiProperty() @IsString() @MinLength(2) @MaxLength(180) legalName: string;
@@ -28,4 +29,7 @@ export class CreateBranchDto {
   @ApiProperty() @IsNumber() @IsLatitude() latitude: number;
   @ApiProperty() @IsNumber() @IsLongitude() longitude: number;
   @ApiProperty({ required: false }) @IsOptional() @IsTimeZone() timezone?: string;
+}
+export class UpdateBranchDto extends PartialType(CreateBranchDto) {
+  @ApiProperty({ required: false }) @IsOptional() @IsBoolean() active?: boolean;
 }

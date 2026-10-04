@@ -6,7 +6,7 @@ API de orquestração logística: pedidos independentes entram no pool; o matchi
 
 Node 22.12+/24, NestJS 11, TypeScript estrito, Prisma 6.19, PostgreSQL/PostGIS, Redis 7.4, BullMQ, Socket.IO, JWT, class-validator, Swagger, Jest e Supertest. Use o lockfile (`npm ci`).
 
-Módulos: `auth`, `businesses`, `drivers`, `tracking`, `deliveries`, `routes`, `matching`, `pricing`, `offers`, `maps`, `messaging`, `whatsapp`, `finance`, `incidents`, `analytics`, `admin`, `service-zones`, `jobs`, `realtime`, `users` e infraestrutura compartilhada. Controllers delegam as operações aos serviços.
+Módulos: `auth`, `documents`, `businesses`, `drivers`, `tracking`, `deliveries`, `routes`, `matching`, `pricing`, `offers`, `maps`, `messaging`, `whatsapp`, `finance`, `incidents`, `analytics`, `admin`, `service-zones`, `jobs`, `realtime`, `users` e infraestrutura compartilhada. Controllers delegam as operações aos serviços.
 
 - [Auditoria, arquitetura e plano das fases](docs/architecture.md)
 - [OpenAPI exportado](docs/openapi.json)
@@ -71,6 +71,7 @@ A porta PostgreSQL foi alterada de `55432` para `54432` porque o Windows passou 
 | Infra | `DATABASE_URL`, `REDIS_URL`, `PORT`, `CORS_ORIGINS` (lista separada por vírgula) |
 | Auth | `JWT_SECRET`, `JWT_REFRESH_SECRET` diferentes, pelo menos 32 caracteres; access 900s e refresh 30 dias por padrão |
 | Segredos | `PIN_PEPPER` e `OUTBOX_ENCRYPTION_KEY` (64 caracteres hexadecimais/AES-256). Preserve a chave enquanto houver mensagens pendentes |
+| Documentos | `DOCUMENT_STORAGE_DIR` opcional; por padrão usa `.data/documents`, com arquivos privados e metadados no PostgreSQL |
 | Tracking | `GPS_TTL_SECONDS`, `GPS_HISTORY_SAMPLE_SECONDS`, `GPS_RETENTION_DAYS` |
 | SLA | `DEFAULT_PICKUP_SLA_SECONDS`, `DEFAULT_DELIVERY_SLA_SECONDS`, `DEFAULT_MAX_DELIVERY_SECONDS` |
 | Matching | `MATCH_RADIUS_METERS`, `MATCH_CANDIDATE_LIMIT`, `MATCH_EVALUATION_LIMIT`, `MAX_POOL_BATCH`, `MAX_ROUTE_DELIVERIES` |
@@ -85,14 +86,15 @@ Valores de dinheiro são centavos inteiros; distância em metros, duração em s
 
 ## Fluxo operacional
 
-1. Cadastre `BUSINESS_OWNER` ou `DRIVER` em `POST /auth/register` e faça login. ADMIN não pode ser criado pelo cadastro público; use o seed local ou provisionamento administrativo controlado.
+1. Cadastre `BUSINESS_OWNER` ou `DRIVER` em `POST /auth/register` e faça login. `GET /auth/me` retorna a identidade atual; `PATCH /auth/me` atualiza nome/telefone e `POST /auth/change-password` troca a senha e encerra tokens anteriores. ADMIN não pode ser criado pelo cadastro público; use o seed local ou provisionamento administrativo controlado.
 2. Empresa: `POST /businesses`, depois `POST /businesses/:id/branches`.
 3. Entregador: registre veículo em `POST /driver/vehicles`, registre consentimento em `POST /driver/consent`. Admin aprova onboarding em `POST /admin/drivers/:id/review`. Altere status para AVAILABLE e envie GPS.
-4. Crie entrega em `POST /deliveries`, opcionalmente com header `Idempotency-Key`. Ela entra em `WAITING_POOL` e `PREPARING`. `POST /deliveries/:id/ready` registra preparo concluído.
-5. Worker filtra candidatos no PostGIS, testa inserções e cria ofertas. `GET /driver/offers` contém somente quantidade, pickup aproximado, distância, duração e ganho.
-6. `POST /driver/offers/:id/accept` reserva atomicamente; `reject` recusa. Expiração automática devolve pedidos livres ao pool.
-7. Driver inicia a rota; registra `arrive` e `complete` para pickups. Dropoffs exigem PIN ou confirmação do destinatário; `complete` genérico não contorna a prova.
-8. `POST /deliveries/:id/verify` conclui entrega/prova/earning/ledger em uma transação. Depois de resolver todas as paradas, `POST /routes/:id/finish` encerra a rota.
+4. Documentos: consulte `GET /documents/policy`, envie multipart em `POST /documents` e acompanhe `GET /documents?entityType=...&entityId=...`. O conteúdo é privado, validado por assinatura mágica e pode ser revisado por ADMIN em `PATCH /documents/:id/review`.
+5. Crie entrega em `POST /deliveries`, opcionalmente com header `Idempotency-Key`. Ela entra em `WAITING_POOL` e `PREPARING`. `POST /deliveries/:id/ready` registra preparo concluído.
+6. Worker filtra candidatos no PostGIS, testa inserções e cria ofertas. `GET /driver/offers` contém somente quantidade, pickup aproximado, distância, duração e ganho.
+7. `POST /driver/offers/:id/accept` reserva atomicamente; `reject` recusa. Expiração automática devolve pedidos livres ao pool.
+8. Driver inicia a rota; registra `arrive` e `complete` para pickups. Dropoffs exigem PIN ou confirmação do destinatário; `complete` genérico não contorna a prova.
+9. `POST /deliveries/:id/verify` conclui entrega/prova/earning/ledger em uma transação. Depois de resolver todas as paradas, `POST /routes/:id/finish` encerra a rota. `GET /routes` lista apenas rotas autorizadas e `PATCH /businesses/:id/branches/:branchId` permite ao proprietário editar uma unidade.
 
 Exemplo de entrega:
 

@@ -8,6 +8,7 @@ import { ConfigService } from '../config/config.service';
 import { DeliveryStateMachineService } from '../deliveries/delivery-state-machine.service';
 import { deliveryView } from '../deliveries/deliveries.service';
 import { PrismaService } from '../infra/prisma.service';
+import { RouteListDto } from './routes.dto';
 
 @Injectable()
 export class RoutesService {
@@ -21,6 +22,24 @@ export class RoutesService {
   assertDriver(actor: Actor, route: Pick<Route, 'driverId'>): void {
     if (actor.role !== 'DRIVER' || !actor.driverId || actor.driverId !== route.driverId)
       throw new DomainError('ROUTE_FORBIDDEN', 'Only the assigned driver can operate this route', 403);
+  }
+  async list(actor: Actor, query: RouteListDto) {
+    const where: Prisma.RouteWhereInput = { ...(query.status ? { status: query.status } : {}) };
+    if (actor.role === 'DRIVER' && actor.driverId) where.driverId = actor.driverId;
+    else if (['BUSINESS_OWNER', 'BUSINESS_STAFF'].includes(actor.role) && actor.businessId)
+      where.deliveries = { some: { businessId: actor.businessId } };
+    else if (actor.role !== 'ADMIN') throw new DomainError('ROUTE_FORBIDDEN', 'Route access required', 403);
+    const rows = await this.db.route.findMany({
+      where,
+      select: { id: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 26,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+    });
+    return {
+      items: await Promise.all(rows.slice(0, 25).map((route) => this.get(actor, route.id))),
+      nextCursor: rows.length > 25 ? rows[24]?.id ?? null : null,
+    };
   }
   async get(actor: Actor, id: string) {
     const route = await this.db.route.findUnique({

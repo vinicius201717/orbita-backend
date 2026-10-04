@@ -8,12 +8,14 @@ import { ConfigService } from '../config/config.service';
 import { hashPassword, verifyPassword } from '../common/crypto.service';
 import { DomainError } from '../common/domain-error';
 import { Actor } from '../common/actor';
-import { LoginDto, RegisterDto } from './auth.dto';
+import { ChangePasswordDto, IdentityDto, LoginDto, RegisterDto, UpdateAccountDto } from './auth.dto';
+import { lockEntities } from '../common/locks';
 const claims = z.object({
   sub: z.string().uuid(),
   jti: z.string().uuid(),
   type: z.enum(['access', 'refresh']),
   familyId: z.string().uuid().optional(),
+  v: z.number().int().nonnegative().default(0),
 });
 @Injectable()
 export class AuthService {
@@ -22,6 +24,80 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
   ) {}
+  async me(actor: Actor): Promise<IdentityDto> {
+    const user = await this.db.user.findUniqueOrThrow({
+      where: { id: actor.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        phone: true,
+        businessId: true,
+        active: true,
+        deletedAt: true,
+        driver: { select: { id: true, phone: true } },
+      },
+    });
+    if (!user.active || user.deletedAt) throw new DomainError('UNAUTHORIZED', 'Account unavailable', 401);
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      businessId: user.businessId,
+      driverId: user.driver?.id ?? null,
+      phone: user.phone ?? user.driver?.phone ?? null,
+    };
+  }
+  async updateAccount(actor: Actor, dto: UpdateAccountDto) {
+    await this.db.transaction(async (tx) => {
+      await lockEntities(tx, [`user:${actor.id}`, ...(actor.driverId ? [`driver:${actor.driverId}`] : [])]);
+      if (actor.driverId && dto.phone) {
+        const previous = await tx.driver.findUniqueOrThrow({ where: { id: actor.driverId } });
+        await tx.driver.update({ where: { id: actor.driverId }, data: { phone: dto.phone } });
+        if (dto.phone !== previous.phone)
+          await tx.whatsAppIdentity.updateMany({
+            where: { entityType: 'DRIVER', entityId: actor.driverId },
+            data: { verifiedAt: null, optInAt: null },
+          });
+      }
+      await tx.user.update({ where: { id: actor.id }, data: dto });
+      await tx.auditLog.create({
+        data: { actorId: actor.id, action: 'account.updated', entityType: 'User', entityId: actor.id },
+      });
+    });
+    return this.me(actor);
+  }
+  async changePassword(actor: Actor, dto: ChangePasswordDto) {
+    const snapshot = await this.db.user.findUniqueOrThrow({ where: { id: actor.id } });
+    if (!(await verifyPassword(dto.currentPassword, snapshot.passwordHash)))
+      throw new DomainError('INVALID_CREDENTIALS', 'Current password is incorrect', 400);
+    const passwordHash = await hashPassword(dto.newPassword);
+    await this.db.transaction(async (tx) => {
+      await lockEntities(tx, [`user:${actor.id}`]);
+      const current = await tx.user.findUniqueOrThrow({ where: { id: actor.id } });
+      if (current.passwordHash !== snapshot.passwordHash)
+        throw new DomainError('SESSION_CHANGED', 'Sign in again before changing password', 409);
+      await tx.user.update({
+        where: { id: actor.id },
+        data: { passwordHash, authVersion: { increment: 1 } },
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId: actor.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId: actor.id,
+          action: 'account.password_changed',
+          entityType: 'User',
+          entityId: actor.id,
+        },
+      });
+    });
+    return { success: true, signInRequired: true };
+  }
   async register(dto: RegisterDto) {
     const passwordHash = await hashPassword(dto.password);
     try {
@@ -29,6 +105,7 @@ export class AuthService {
         data: {
           email: dto.email.toLowerCase(),
           name: dto.name,
+          phone: dto.phone,
           passwordHash,
           role: dto.role,
           ...(dto.role === 'DRIVER' ? { driver: { create: { phone: dto.phone } } } : {}),
@@ -54,7 +131,7 @@ export class AuthService {
   }
   private async issue(tx: Prisma.TransactionClient, user: User, familyId: string = randomUUID()) {
     const accessToken = await this.jwt.signAsync(
-      { sub: user.id, jti: randomUUID(), type: 'access' },
+      { sub: user.id, jti: randomUUID(), type: 'access', v: user.authVersion },
       {
         secret: this.config.get('JWT_SECRET'),
         expiresIn: this.config.get('JWT_ACCESS_TTL_SECONDS'),
@@ -65,7 +142,7 @@ export class AuthService {
     );
     const tokenId = randomUUID();
     const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, jti: tokenId, type: 'refresh', familyId },
+      { sub: user.id, jti: tokenId, type: 'refresh', familyId, v: user.authVersion },
       {
         secret: this.config.get('JWT_REFRESH_SECRET'),
         expiresIn: this.config.get('JWT_REFRESH_TTL_SECONDS'),
@@ -113,7 +190,14 @@ export class AuthService {
         where: { tokenHash: this.digest(token) },
         include: { user: true },
       });
-      if (!stored || stored.userId !== parsed.sub || !stored.user.active || stored.expiresAt <= new Date())
+      if (
+        !stored ||
+        stored.userId !== parsed.sub ||
+        !stored.user.active ||
+        stored.user.deletedAt ||
+        stored.user.authVersion !== parsed.v ||
+        stored.expiresAt <= new Date()
+      )
         return null;
       if (stored.revokedAt) {
         await tx.refreshToken.updateMany({
@@ -160,7 +244,8 @@ export class AuthService {
       where: { id: parsed.sub },
       include: { driver: { select: { id: true } } },
     });
-    if (!user?.active || user.deletedAt) throw new DomainError('UNAUTHORIZED', 'Account unavailable', 401);
+    if (!user?.active || user.deletedAt || user.authVersion !== parsed.v)
+      throw new DomainError('UNAUTHORIZED', 'Account unavailable', 401);
     return { id: user.id, role: user.role, businessId: user.businessId, driverId: user.driver?.id ?? null };
   }
 }

@@ -15,7 +15,7 @@ import {
 export class ApproveDriverDto {
   @ApiProperty({ enum: OnboardingStatus }) @IsEnum(OnboardingStatus) status: OnboardingStatus;
 }
-export class IdentityDto {
+export class AdminWhatsAppIdentityDto {
   @ApiProperty() @Matches(/^\+[1-9]\d{7,14}$/) phoneNumber: string;
   @ApiProperty({ enum: IdentityType }) @IsEnum(IdentityType) entityType: IdentityType;
   @ApiProperty() @IsUUID() entityId: string;

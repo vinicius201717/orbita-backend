@@ -4,13 +4,21 @@ import { Actor } from '../common/actor';
 import { DomainError } from '../common/domain-error';
 import { lockEntities } from '../common/locks';
 import { DeliveriesService } from '../deliveries/deliveries.service';
-import { ApproveDriverDto, IdentityDto } from './admin.dto';
+import { AdminWhatsAppIdentityDto, ApproveDriverDto } from './admin.dto';
 @Injectable()
 export class AdminService {
   constructor(
     private readonly db: PrismaService,
     private readonly deliveries: DeliveriesService,
   ) {}
+  async driverDetail(id: string) {
+    const driver = await this.db.driver.findUnique({ where: { id }, include: {
+      user: { select: { id: true, name: true, email: true, active: true } },
+      vehicles: { orderBy: { id: 'desc' } },
+    } });
+    if (!driver) throw new DomainError('DRIVER_NOT_FOUND', 'Driver not found', 404);
+    return driver;
+  }
   async driver(actor: Actor, id: string, dto: ApproveDriverDto) {
     return this.db.transaction(async (tx) => {
       await lockEntities(tx, [`driver:${id}`]);
@@ -33,7 +41,7 @@ export class AdminService {
       return result;
     });
   }
-  async identity(actor: Actor, dto: IdentityDto) {
+  async identity(actor: Actor, dto: AdminWhatsAppIdentityDto) {
     const entity =
       dto.entityType === 'BUSINESS'
         ? await this.db.business.findUnique({ where: { id: dto.entityId }, select: { phone: true } })
@@ -131,6 +139,8 @@ export class AdminService {
         return this.db.fraudFlag.findMany(page);
       case 'privacy-requests':
         return this.db.privacyRequest.findMany(page);
+      case 'whatsapp-identities':
+        return this.db.whatsAppIdentity.findMany(page);
       default:
         throw new DomainError('NOT_FOUND', 'Unknown resource', 404);
     }
