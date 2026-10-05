@@ -1148,6 +1148,249 @@
         ]
       }
     },
+    "/api/v1/business/products": {
+      "get": {
+        "operationId": "MerchantController_products",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List the current business catalog, including unavailable products",
+        "tags": [
+          "merchant"
+        ]
+      },
+      "post": {
+        "operationId": "MerchantController_createProduct",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "merchant"
+        ]
+      }
+    },
+    "/api/v1/business/products/{id}": {
+      "patch": {
+        "operationId": "MerchantController_updateProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProductDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "merchant"
+        ]
+      }
+    },
+    "/api/v1/business/orders/summary": {
+      "get": {
+        "operationId": "MerchantController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Merchant operations and sales summary; today uses America/Sao_Paulo",
+        "tags": [
+          "merchant"
+        ]
+      }
+    },
+    "/api/v1/business/orders": {
+      "get": {
+        "operationId": "MerchantController_orders",
+        "parameters": [
+          {
+            "name": "stage",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "preparing",
+                "ready",
+                "on-the-way",
+                "completed",
+                "attention",
+                "cancelled"
+              ]
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 120,
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "merchant"
+        ]
+      },
+      "post": {
+        "operationId": "MerchantController_createOrder",
+        "parameters": [
+          {
+            "name": "idempotency-key",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Unique per order, 1–100 characters",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create an order with server-priced snapshots and its delivery atomically",
+        "tags": [
+          "merchant"
+        ]
+      }
+    },
+    "/api/v1/business/orders/{id}": {
+      "get": {
+        "operationId": "MerchantController_order",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "merchant"
+        ]
+      }
+    },
     "/api/v1/driver/me": {
       "get": {
         "operationId": "DriversController_me",
@@ -1512,6 +1755,36 @@
         ],
         "tags": [
           "routes"
+        ]
+      }
+    },
+    "/api/v1/business/addresses/search": {
+      "post": {
+        "operationId": "BusinessAddressesController_search",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddressSearchDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Find delivery address candidates; the merchant must confirm the destination",
+        "tags": [
+          "business"
         ]
       }
     },
@@ -2738,6 +3011,148 @@
           "token"
         ]
       },
+      "CreateProductDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "object",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "priceCents": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10000000
+          },
+          "available": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "priceCents"
+        ]
+      },
+      "UpdateProductDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "object",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "priceCents": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10000000
+          },
+          "available": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "OrderItemDto": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "productId",
+          "quantity"
+        ]
+      },
+      "CreateOrderDto": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "type": "string"
+          },
+          "customer": {
+            "$ref": "#/components/schemas/CustomerDto"
+          },
+          "dropoff": {
+            "$ref": "#/components/schemas/DropoffDto"
+          },
+          "address": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "items": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemDto"
+            }
+          },
+          "serviceLevel": {
+            "type": "string",
+            "enum": [
+              "ECONOMY",
+              "SMART",
+              "EXPRESS"
+            ],
+            "default": "SMART"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "HOT",
+              "COLD",
+              "FROZEN",
+              "AMBIENT",
+              "FRAGILE",
+              "BEVERAGE",
+              "MEDICINE",
+              "OTHER"
+            ],
+            "default": "AMBIENT"
+          },
+          "preparationMinutes": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 120,
+            "default": 15
+          }
+        },
+        "required": [
+          "branchId",
+          "customer",
+          "dropoff",
+          "address",
+          "items"
+        ]
+      },
       "DriverStatusDto": {
         "type": "object",
         "properties": {
@@ -2849,6 +3264,18 @@
           "latitude",
           "longitude",
           "timestamp"
+        ]
+      },
+      "AddressSearchDto": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "example": "Avenida Paulista, 1578, São Paulo, SP"
+          }
+        },
+        "required": [
+          "address"
         ]
       },
       "WhatsAppConsentDto": {

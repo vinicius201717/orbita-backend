@@ -20,6 +20,7 @@ import { AdminModule } from './admin/admin.module';
 import { JobsModule } from './jobs/jobs.module';
 import { MetricsController } from './common/metrics.controller';
 import { DocumentsModule } from './documents/documents.module';
+import { MerchantModule } from './merchant/merchant.module';
 @Module({
   imports: [
     InfraModule,
@@ -27,6 +28,7 @@ import { DocumentsModule } from './documents/documents.module';
     AuthModule,
     BusinessesModule,
     DeliveriesModule,
+    MerchantModule,
     DriversModule,
     RealtimeModule,
     RoutesModule,

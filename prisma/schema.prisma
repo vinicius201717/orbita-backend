@@ -204,22 +204,24 @@ model RefreshToken {
 }
 
 model Business {
-  id                 String           @id @default(uuid()) @db.Uuid
+  id                 String            @id @default(uuid()) @db.Uuid
   legalName          String
   tradeName          String
-  document           String           @unique
-  phone              String           @unique
+  document           String            @unique
+  phone              String            @unique
   email              String
-  active             Boolean          @default(true)
-  category           BusinessCategory @default(FOOD)
-  billingMode        BillingMode      @default(POSTPAID)
-  businessReadyScore Int              @default(100)
+  active             Boolean           @default(true)
+  category           BusinessCategory  @default(FOOD)
+  billingMode        BillingMode       @default(POSTPAID)
+  businessReadyScore Int               @default(100)
   users              User[]
   branches           BusinessBranch[]
   deliveries         Delivery[]
+  products           MerchantProduct[]
+  orders             MerchantOrder[]
   wallet             Wallet?
-  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @db.Timestamptz(3)
 }
 
 model BusinessBranch {
@@ -234,6 +236,7 @@ model BusinessBranch {
   timezone   String                                @default("America/Sao_Paulo")
   active     Boolean                               @default(true)
   deliveries Delivery[]
+  orders     MerchantOrder[]
   createdAt  DateTime                              @default(now()) @db.Timestamptz(3)
 
   @@index([businessId])
@@ -408,6 +411,7 @@ model Delivery {
   incidents                     DeliveryIncident[]
   earning                       DriverEarning?
   waitFee                       WaitFee?
+  merchantOrder                 MerchantOrder?
   createdAt                     DateTime                              @default(now()) @db.Timestamptz(3)
   updatedAt                     DateTime                              @updatedAt @db.Timestamptz(3)
 
@@ -417,6 +421,60 @@ model Delivery {
   @@index([businessId, createdAt])
   @@index([driverId])
   @@index([routeId])
+}
+
+model MerchantProduct {
+  id          String              @id @default(uuid()) @db.Uuid
+  businessId  String              @db.Uuid
+  business    Business            @relation(fields: [businessId], references: [id])
+  name        String
+  description String?
+  category    String
+  priceCents  Int
+  available   Boolean             @default(true)
+  orderItems  MerchantOrderItem[]
+  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime            @updatedAt @db.Timestamptz(3)
+
+  @@index([businessId, name])
+}
+
+model MerchantOrder {
+  id             String              @id @default(uuid()) @db.Uuid
+  businessId     String              @db.Uuid
+  business       Business            @relation(fields: [businessId], references: [id])
+  branchId       String              @db.Uuid
+  branch         BusinessBranch      @relation(fields: [branchId], references: [id])
+  deliveryId     String              @unique @db.Uuid
+  delivery       Delivery            @relation(fields: [deliveryId], references: [id])
+  idempotencyKey String
+  requestHash    String
+  customerName   String
+  customerPhone  String?
+  address        String
+  notes          String?
+  totalCents     Int
+  items          MerchantOrderItem[]
+  createdAt      DateTime            @default(now()) @db.Timestamptz(3)
+
+  @@unique([businessId, idempotencyKey])
+  @@index([businessId, createdAt, id])
+}
+
+model MerchantOrderItem {
+  id             String          @id @default(uuid()) @db.Uuid
+  orderId        String          @db.Uuid
+  order          MerchantOrder   @relation(fields: [orderId], references: [id])
+  productId      String          @db.Uuid
+  product        MerchantProduct @relation(fields: [productId], references: [id])
+  position       Int
+  name           String
+  quantity       Int
+  unitPriceCents Int
+  totalCents     Int
+
+  @@unique([orderId, position])
+  @@unique([orderId, productId])
 }
 
 model Route {

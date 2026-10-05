@@ -3,7 +3,9 @@ import { ConfigService } from '../config/config.service';
 import { MapsProvider } from './maps.provider';
 import { MockMapsProvider } from './mock-maps.provider';
 import { GoogleMapsProvider } from './google-maps.provider';
+import { BusinessAddressesController } from './business-addresses.controller';
 @Module({
+  controllers: [BusinessAddressesController],
   providers: [
     MockMapsProvider,
     GoogleMapsProvider,

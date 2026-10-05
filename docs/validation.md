@@ -1,4 +1,13 @@
-# Validação local — 4 de outubro de 2026
+# Validação local — 5 de outubro de 2026
+
+## Painel do estabelecimento
+
+- Backend: build e lint aprovados; 30 testes unitários em 9 suítes e 41 testes de integração em 8 suítes na execução completa. Após normalizar a busca de telefone, a suíte de pedidos foi reexecutada com 7/7 testes aprovados (um cenário novo).
+- Frontend: 93 testes em 15 arquivos, TypeScript, lint e build de produção aprovados.
+- Migração `202610040001_merchant_catalog` aplicada nos bancos locais `orbita` e `orbita_test`.
+- Navegador com API real: cadastro/pausa de produtos, pedido com preços calculados no servidor, confirmação manual de endereço, prontidão para coleta, filtros e visual móvel.
+- Acessos locais demonstrativos de estabelecimento e motoboy validados pelo formulário de login. As credenciais estão em arquivo local ignorado pelo Git.
+- Busca Google sem chave retorna indisponibilidade; o ponto manual permanece utilizável. Provedor real não foi ativado nem homologado.
 
 ## Evidências executadas
 

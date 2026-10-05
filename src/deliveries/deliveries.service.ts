@@ -61,93 +61,99 @@ export class DeliveriesService {
       throw new DomainError('DELIVERY_FORBIDDEN', 'Business operation not permitted', 403);
   }
   async create(actor: Actor, dto: CreateDeliveryDto, idempotencyKey?: string) {
+    return this.db.transaction((tx) => this.createInTransaction(tx, actor, dto, idempotencyKey));
+  }
+  async createInTransaction(
+    tx: Prisma.TransactionClient,
+    actor: Actor,
+    dto: CreateDeliveryDto,
+    idempotencyKey?: string,
+  ) {
     if (idempotencyKey && (idempotencyKey.length > 100 || !/^[\w:.-]+$/.test(idempotencyKey)))
       throw new DomainError('INVALID_IDEMPOTENCY_KEY', 'Invalid idempotency key', 400);
     const reference = idempotencyKey ?? dto.externalReference;
-    return this.db.transaction(async (tx) => {
-      const branch = await tx.businessBranch.findUnique({
-        where: { id: dto.branchId },
-        include: { business: true },
-      });
-      if (!branch || !branch.active || !branch.business.active)
-        throw new DomainError('BRANCH_UNAVAILABLE', 'Branch unavailable', 404);
-      this.assertBusiness(actor, branch.businessId);
-      if (reference) {
-        await lockEntities(tx, [`delivery-reference:${branch.businessId}:${reference}`]);
-        const existing = await tx.delivery.findUnique({
-          where: {
-            businessId_externalReference: { businessId: branch.businessId, externalReference: reference },
-          },
-        });
-        if (existing) return deliveryView(existing, actor);
-      }
-      const now = new Date();
-      const estimatedReadyAt = dto.estimatedReadyAt ? new Date(dto.estimatedReadyAt) : null;
-      const pickupDeadline = dto.pickupDeadline
-        ? new Date(dto.pickupDeadline)
-        : new Date(now.getTime() + this.config.get('DEFAULT_PICKUP_SLA_SECONDS') * 1000);
-      const deliveryDeadline = dto.deliveryDeadline
-        ? new Date(dto.deliveryDeadline)
-        : new Date(now.getTime() + this.config.get('DEFAULT_DELIVERY_SLA_SECONDS') * 1000);
-      if (
-        pickupDeadline <= now ||
-        deliveryDeadline <= pickupDeadline ||
-        (estimatedReadyAt && estimatedReadyAt > pickupDeadline)
-      )
-        throw new DomainError('INVALID_SLA', 'Deadlines must be future, ordered and allow preparation', 400);
-      const id = randomUUID();
-      const pin = this.crypto.pin();
-      const confirmation = this.crypto.token();
-      const delivery = await tx.delivery.create({
-        data: {
-          id,
-          businessId: branch.businessId,
-          branchId: branch.id,
-          externalReference: reference,
-          customerName: dto.customer.name,
-          customerPhone: dto.customer.phone,
-          customerOptInAt: dto.customer.optIn && dto.customer.phone ? now : null,
-          pickupLatitude: branch.latitude,
-          pickupLongitude: branch.longitude,
-          dropoffLatitude: dto.dropoff.latitude,
-          dropoffLongitude: dto.dropoff.longitude,
-          complement: dto.dropoff.complement,
-          items: dto.items.map((item) => ({ name: item.name, quantity: item.quantity })),
-          serviceLevel: dto.serviceLevel ?? 'SMART',
-          category: dto.category ?? 'AMBIENT',
-          capacityUnits: dto.capacityUnits ?? this.config.get('DEFAULT_CAPACITY_UNITS'),
-          weightGrams: dto.weightGrams,
-          volumeCm3: dto.volumeCm3,
-          temperatureRequirement: dto.temperatureRequirement,
-          packageType: dto.packageType,
-          estimatedReadyAt,
-          pickupDeadline,
-          deliveryDeadline,
-          maxDeliveryDurationSeconds:
-            dto.maxDeliveryDurationSeconds ?? this.config.get('DEFAULT_MAX_DELIVERY_SECONDS'),
-          revenueCents: this.config.get('BASE_REVENUE_CENTS'),
-          verificationCodeHash: this.crypto.hash(`${id}:${pin}`),
-          customerConfirmationTokenHash: this.crypto.hash(`confirmation:${confirmation}`),
-          confirmationExpiresAt: new Date(deliveryDeadline.getTime() + 86400000),
+    const branch = await tx.businessBranch.findUnique({
+      where: { id: dto.branchId },
+      include: { business: true },
+    });
+    if (!branch || !branch.active || !branch.business.active)
+      throw new DomainError('BRANCH_UNAVAILABLE', 'Branch unavailable', 404);
+    this.assertBusiness(actor, branch.businessId);
+    if (reference) {
+      await lockEntities(tx, [`delivery-reference:${branch.businessId}:${reference}`]);
+      const existing = await tx.delivery.findUnique({
+        where: {
+          businessId_externalReference: { businessId: branch.businessId, externalReference: reference },
         },
       });
-      if (dto.customer.optIn && dto.customer.phone)
-        await tx.messageOutbox.create({
-          data: {
-            idempotencyKey: `delivery-pin:${id}`,
-            recipient: dto.customer.phone,
-            payload: this.crypto.encrypt({
-              kind: 'text',
-              text: `ORBITA: seu código de entrega é ${pin}. Informe apenas ao receber o pedido. Confirmação: ${this.config.get('PUBLIC_BASE_URL')}/api/v1/deliveries/${id}/confirm#token=${confirmation}`,
-            }),
-          },
-        });
-      await this.events.emit(tx, 'DeliveryCreated', id, { deliveryId: id, businessId: branch.businessId });
-      await tx.auditLog.create({
-        data: { actorId: actor.id, action: 'delivery.created', entityType: 'Delivery', entityId: id },
-      });
-      return deliveryView(delivery, actor);
+      if (existing) return deliveryView(existing, actor);
+    }
+    const now = new Date();
+    const estimatedReadyAt = dto.estimatedReadyAt ? new Date(dto.estimatedReadyAt) : null;
+    const pickupDeadline = dto.pickupDeadline
+      ? new Date(dto.pickupDeadline)
+      : new Date(now.getTime() + this.config.get('DEFAULT_PICKUP_SLA_SECONDS') * 1000);
+    const deliveryDeadline = dto.deliveryDeadline
+      ? new Date(dto.deliveryDeadline)
+      : new Date(now.getTime() + this.config.get('DEFAULT_DELIVERY_SLA_SECONDS') * 1000);
+    if (
+      pickupDeadline <= now ||
+      deliveryDeadline <= pickupDeadline ||
+      (estimatedReadyAt && estimatedReadyAt > pickupDeadline)
+    )
+      throw new DomainError('INVALID_SLA', 'Deadlines must be future, ordered and allow preparation', 400);
+    const id = randomUUID();
+    const pin = this.crypto.pin();
+    const confirmation = this.crypto.token();
+    const delivery = await tx.delivery.create({
+      data: {
+        id,
+        businessId: branch.businessId,
+        branchId: branch.id,
+        externalReference: reference,
+        customerName: dto.customer.name,
+        customerPhone: dto.customer.phone,
+        customerOptInAt: dto.customer.optIn && dto.customer.phone ? now : null,
+        pickupLatitude: branch.latitude,
+        pickupLongitude: branch.longitude,
+        dropoffLatitude: dto.dropoff.latitude,
+        dropoffLongitude: dto.dropoff.longitude,
+        complement: dto.dropoff.complement,
+        items: dto.items.map((item) => ({ name: item.name, quantity: item.quantity })),
+        serviceLevel: dto.serviceLevel ?? 'SMART',
+        category: dto.category ?? 'AMBIENT',
+        capacityUnits: dto.capacityUnits ?? this.config.get('DEFAULT_CAPACITY_UNITS'),
+        weightGrams: dto.weightGrams,
+        volumeCm3: dto.volumeCm3,
+        temperatureRequirement: dto.temperatureRequirement,
+        packageType: dto.packageType,
+        estimatedReadyAt,
+        pickupDeadline,
+        deliveryDeadline,
+        maxDeliveryDurationSeconds:
+          dto.maxDeliveryDurationSeconds ?? this.config.get('DEFAULT_MAX_DELIVERY_SECONDS'),
+        revenueCents: this.config.get('BASE_REVENUE_CENTS'),
+        verificationCodeHash: this.crypto.hash(`${id}:${pin}`),
+        customerConfirmationTokenHash: this.crypto.hash(`confirmation:${confirmation}`),
+        confirmationExpiresAt: new Date(deliveryDeadline.getTime() + 86400000),
+      },
     });
+    if (dto.customer.optIn && dto.customer.phone)
+      await tx.messageOutbox.create({
+        data: {
+          idempotencyKey: `delivery-pin:${id}`,
+          recipient: dto.customer.phone,
+          payload: this.crypto.encrypt({
+            kind: 'text',
+            text: `ORBITA: seu código de entrega é ${pin}. Informe apenas ao receber o pedido. Confirmação: ${this.config.get('PUBLIC_BASE_URL')}/api/v1/deliveries/${id}/confirm#token=${confirmation}`,
+          }),
+        },
+      });
+    await this.events.emit(tx, 'DeliveryCreated', id, { deliveryId: id, businessId: branch.businessId });
+    await tx.auditLog.create({
+      data: { actorId: actor.id, action: 'delivery.created', entityType: 'Delivery', entityId: id },
+    });
+    return deliveryView(delivery, actor);
   }
   async list(actor: Actor, query: DeliveryListDto) {
     const where: Prisma.DeliveryWhereInput = {

@@ -79,6 +79,43 @@ export class GoogleMapsProvider extends MapsProvider {
     const row = await this.geocoding(`address=${encodeURIComponent(address)}`);
     return { latitude: row.geometry.location.lat, longitude: row.geometry.location.lng };
   }
+  async searchAddresses(address: string) {
+    const query = new URLSearchParams({
+      address,
+      language: 'pt-BR',
+      region: 'br',
+      key: this.config.get('GOOGLE_MAPS_API_KEY'),
+    });
+    const response = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?${query}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) throw new Error('Geocoding unavailable');
+    const result = z
+      .object({
+        status: z.string(),
+        results: z
+          .array(
+            z.object({
+              formatted_address: z.string(),
+              partial_match: z.boolean().optional(),
+              geometry: z.object({
+                location: z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) }),
+                location_type: z.string(),
+              }),
+            }),
+          )
+          .default([]),
+      })
+      .parse(await response.json());
+    if (result.status === 'ZERO_RESULTS') return [];
+    if (result.status !== 'OK') throw new Error('Geocoding unavailable');
+    return result.results.slice(0, 5).map((row) => ({
+      address: row.formatted_address,
+      latitude: row.geometry.location.lat,
+      longitude: row.geometry.location.lng,
+      approximate: row.partial_match === true || row.geometry.location_type !== 'ROOFTOP',
+    }));
+  }
   async reverseGeocode(point: GeoPoint) {
     return (await this.geocoding(`latlng=${point.latitude},${point.longitude}`)).formatted_address;
   }

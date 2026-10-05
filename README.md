@@ -6,10 +6,11 @@ API de orquestração logística: pedidos independentes entram no pool; o matchi
 
 Node 22.12+/24, NestJS 11, TypeScript estrito, Prisma 6.19, PostgreSQL/PostGIS, Redis 7.4, BullMQ, Socket.IO, JWT, class-validator, Swagger, Jest e Supertest. Use o lockfile (`npm ci`).
 
-Módulos: `auth`, `documents`, `businesses`, `drivers`, `tracking`, `deliveries`, `routes`, `matching`, `pricing`, `offers`, `maps`, `messaging`, `whatsapp`, `finance`, `incidents`, `analytics`, `admin`, `service-zones`, `jobs`, `realtime`, `users` e infraestrutura compartilhada. Controllers delegam as operações aos serviços.
+Módulos: `auth`, `documents`, `businesses`, `merchant`, `drivers`, `tracking`, `deliveries`, `routes`, `matching`, `pricing`, `offers`, `maps`, `messaging`, `whatsapp`, `finance`, `incidents`, `analytics`, `admin`, `service-zones`, `jobs`, `realtime`, `users` e infraestrutura compartilhada. Controllers delegam as operações aos serviços.
 
 - [Auditoria, arquitetura e plano das fases](docs/architecture.md)
 - [OpenAPI exportado](docs/openapi.json)
+- [Catálogo, pedidos e endereços do estabelecimento](docs/MERCHANT.md)
 - [Resultados e limites de validação](docs/validation.md)
 - [Configuração de exemplo](.env.example)
 
