@@ -65,6 +65,12 @@ O Redis 7.4.11 foi compilado em `/opt/orbita/redis-7.4.11`; o script utiliza ess
 
 A porta PostgreSQL foi alterada de `55432` para `54432` porque o Windows passou a reservar a faixa antiga para serviços de virtualização. O script atualiza somente a porta do cluster `orbita`, preservando os bancos existentes. Se ocorrer `EACCES` ao abrir uma porta no Windows, confira `netsh interface ipv4 show excludedportrange protocol=tcp`.
 
+Após a reinicialização de 5 de outubro, o Windows também reservou `54432`. Nesta máquina o cluster passou a usar `54329`, preservando os dados. O script aceita `ORBITA_POSTGRES_PORT` para evitar alterar portas padrão do Compose; ajuste `DATABASE_URL` e `TEST_DATABASE_URL` no `.env` local para a mesma porta. Para reiniciar esta configuração:
+
+```powershell
+wsl -d Ubuntu -u root -- env ORBITA_POSTGRES_PORT=54329 bash ./scripts/dev-infra-wsl.sh
+```
+
 ## Configuração
 
 | Grupo | Variáveis e comportamento |
