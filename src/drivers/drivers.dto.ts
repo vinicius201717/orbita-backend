@@ -20,6 +20,13 @@ import {
 export class DriverStatusDto {
   @ApiProperty({ enum: DriverStatus }) @IsEnum(DriverStatus) status: DriverStatus;
 }
+export class DriverAvailabilityDto {
+  @ApiProperty({
+    description: 'Accept new offers. Turning off keeps an assigned route and its GPS operational.',
+  })
+  @IsBoolean()
+  acceptingOrders: boolean;
+}
 export class ConsentDto {
   @ApiProperty() @IsBoolean() granted: boolean;
 }

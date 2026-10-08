@@ -1410,6 +1410,63 @@
         ]
       }
     },
+    "/api/v1/driver/summary": {
+      "get": {
+        "operationId": "DriversController_home",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Driver home: posted balance, local-day earnings and assigned next stop",
+        "tags": [
+          "driver"
+        ]
+      }
+    },
+    "/api/v1/driver/availability": {
+      "patch": {
+        "operationId": "DriversController_availability",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriverAvailabilityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Start or pause new offers while retaining custody and GPS during an assigned route",
+        "tags": [
+          "driver"
+        ]
+      }
+    },
     "/api/v1/driver/me/status": {
       "patch": {
         "operationId": "DriversController_status",
@@ -3151,6 +3208,309 @@
           "dropoff",
           "address",
           "items"
+        ]
+      },
+      "DriverSummaryProfileDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OFFLINE",
+              "AVAILABLE",
+              "ON_ROUTE",
+              "PAUSED"
+            ]
+          },
+          "acceptNewOrders": {
+            "type": "boolean"
+          },
+          "onboardingStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "locationConsentAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "presence": {
+            "type": "string",
+            "enum": [
+              "FRESH",
+              "STALE"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "acceptNewOrders",
+          "onboardingStatus",
+          "locationConsentAt",
+          "presence"
+        ]
+      },
+      "DriverSummaryWalletDto": {
+        "type": "object",
+        "properties": {
+          "balanceCents": {
+            "type": "number",
+            "description": "Net posted ledger balance in cents; does not promise a withdrawal."
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "BRL"
+            ]
+          }
+        },
+        "required": [
+          "balanceCents",
+          "currency"
+        ]
+      },
+      "DriverSummaryTodayDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "example": "2026-10-05"
+          },
+          "timeZone": {
+            "type": "string",
+            "enum": [
+              "America/Sao_Paulo"
+            ]
+          },
+          "earningsCents": {
+            "type": "number",
+            "description": "Settled delivery payout plus tips posted during this local day."
+          },
+          "completedDeliveries": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "timeZone",
+          "earningsCents",
+          "completedDeliveries"
+        ]
+      },
+      "DriverSummaryRouteDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "BUILDING",
+              "OFFERING",
+              "ASSIGNED",
+              "ACTIVE",
+              "COMPLETED",
+              "CANCELLED",
+              "FAILED"
+            ]
+          },
+          "version": {
+            "type": "number"
+          },
+          "remainingStops": {
+            "type": "number"
+          },
+          "totalStops": {
+            "type": "number"
+          },
+          "remainingDeliveries": {
+            "type": "number"
+          },
+          "driverPayoutCents": {
+            "type": "number",
+            "description": "Offered payout for the route, not yet a posted balance."
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "version",
+          "remainingStops",
+          "totalStops",
+          "remainingDeliveries",
+          "driverPayoutCents"
+        ]
+      },
+      "DriverSummaryNavigationDto": {
+        "type": "object",
+        "properties": {
+          "googleMapsUrl": {
+            "type": "string"
+          },
+          "wazeUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "googleMapsUrl",
+          "wazeUrl"
+        ]
+      },
+      "DriverSummaryStopDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deliveryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "PICKUP",
+              "DROPOFF"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ARRIVED",
+              "COMPLETED",
+              "SKIPPED"
+            ]
+          },
+          "sequence": {
+            "type": "number"
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "estimatedArrivalAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string"
+          },
+          "readinessStatus": {
+            "type": "string",
+            "enum": [
+              "PREPARING",
+              "READY_FOR_PICKUP"
+            ]
+          },
+          "deliveryStatus": {
+            "type": "string",
+            "enum": [
+              "CREATED",
+              "WAITING_POOL",
+              "MATCHING",
+              "OFFERED",
+              "ASSIGNED",
+              "PICKUP_PENDING",
+              "PICKED_UP",
+              "IN_TRANSIT",
+              "ARRIVING",
+              "DELIVERED",
+              "FAILED",
+              "CANCELLED",
+              "RETURN_REQUIRED",
+              "RETURNING",
+              "RETURNED"
+            ]
+          },
+          "navigation": {
+            "$ref": "#/components/schemas/DriverSummaryNavigationDto"
+          }
+        },
+        "required": [
+          "id",
+          "deliveryId",
+          "type",
+          "status",
+          "sequence",
+          "latitude",
+          "longitude",
+          "estimatedArrivalAt",
+          "address",
+          "title",
+          "readinessStatus",
+          "deliveryStatus",
+          "navigation"
+        ]
+      },
+      "DriverSummaryDto": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "$ref": "#/components/schemas/DriverSummaryProfileDto"
+          },
+          "wallet": {
+            "$ref": "#/components/schemas/DriverSummaryWalletDto"
+          },
+          "today": {
+            "$ref": "#/components/schemas/DriverSummaryTodayDto"
+          },
+          "currentRoute": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DriverSummaryRouteDto"
+              }
+            ]
+          },
+          "nextStop": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DriverSummaryStopDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "driver",
+          "wallet",
+          "today",
+          "currentRoute",
+          "nextStop"
+        ]
+      },
+      "DriverAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "acceptingOrders": {
+            "type": "boolean",
+            "description": "Accept new offers. Turning off keeps an assigned route and its GPS operational."
+          }
+        },
+        "required": [
+          "acceptingOrders"
         ]
       },
       "DriverStatusDto": {

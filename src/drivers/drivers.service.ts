@@ -50,6 +50,12 @@ export class DriversService {
     return result;
   }
   async status(actor: Actor, status: DriverStatus) {
+    return this.changeAvailability(actor, status);
+  }
+  async availability(actor: Actor, acceptingOrders: boolean) {
+    return this.changeAvailability(actor, acceptingOrders);
+  }
+  private async changeAvailability(actor: Actor, requested: DriverStatus | boolean) {
     const id = this.driverId(actor);
     const result = await this.db.transaction(async (tx) => {
       await lockEntities(tx, [`driver:${id}`]);
@@ -57,6 +63,14 @@ export class DriversService {
         where: { id },
         include: { vehicles: { where: { active: true } } },
       });
+      const status =
+        typeof requested === 'boolean'
+          ? requested
+            ? driver.currentRouteId
+              ? 'ON_ROUTE'
+              : 'AVAILABLE'
+            : 'PAUSED'
+          : requested;
       if (status === 'ON_ROUTE' && !driver.currentRouteId)
         throw new DomainError('STATUS_MANAGED', 'ON_ROUTE requires an assigned route');
       if (driver.currentRouteId && status === 'AVAILABLE')
@@ -74,16 +88,23 @@ export class DriversService {
           'ROUTE_ACTIVE',
           'Report an incident or finish the current route before going offline',
         );
+      const nextStatus = status === 'PAUSED' && driver.currentRouteId ? 'ON_ROUTE' : status;
+      const acceptNewOrders = ['AVAILABLE', 'ON_ROUTE'].includes(status);
       const updated = await tx.driver.update({
         where: { id },
-        data: { status, acceptNewOrders: ['AVAILABLE', 'ON_ROUTE'].includes(status) },
+        data: { status: nextStatus, acceptNewOrders },
       });
-      if (status === 'OFFLINE' || status === 'PAUSED')
+      if (nextStatus === 'OFFLINE' || nextStatus === 'PAUSED')
         await tx.driverLocation.deleteMany({ where: { driverId: id } });
-      await this.events.emit(tx, 'driver.status.updated', id, { driverId: id, status });
+      await this.events.emit(tx, 'driver.status.updated', id, {
+        driverId: id,
+        status: nextStatus,
+        acceptNewOrders,
+      });
       return updated;
     });
-    if (status === 'OFFLINE' || status === 'PAUSED') await this.redis.client.del(`driver:${id}:location`);
+    if (result.status === 'OFFLINE' || result.status === 'PAUSED')
+      await this.redis.client.del(`driver:${id}:location`);
     return result;
   }
   async vehicle(actor: Actor, dto: VehicleDto) {

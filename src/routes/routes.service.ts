@@ -8,6 +8,7 @@ import { ConfigService } from '../config/config.service';
 import { DeliveryStateMachineService } from '../deliveries/delivery-state-machine.service';
 import { deliveryView } from '../deliveries/deliveries.service';
 import { PrismaService } from '../infra/prisma.service';
+import { RedisService } from '../infra/redis.service';
 import { RouteListDto } from './routes.dto';
 
 @Injectable()
@@ -17,6 +18,7 @@ export class RoutesService {
     private readonly config: ConfigService,
     private readonly events: OutboxService,
     private readonly states: DeliveryStateMachineService,
+    private readonly redis: RedisService,
   ) {}
 
   assertDriver(actor: Actor, route: Pick<Route, 'driverId'>): void {
@@ -38,7 +40,7 @@ export class RoutesService {
     });
     return {
       items: await Promise.all(rows.slice(0, 25).map((route) => this.get(actor, route.id))),
-      nextCursor: rows.length > 25 ? rows[24]?.id ?? null : null,
+      nextCursor: rows.length > 25 ? (rows[24]?.id ?? null) : null,
     };
   }
   async get(actor: Actor, id: string) {
@@ -252,9 +254,10 @@ export class RoutesService {
     });
   }
   async finish(actor: Actor, id: string) {
-    return this.db.transaction(async (tx) => {
+    const result = await this.db.transaction(async (tx) => {
       const route = await this.lockedRoute(tx, actor, id);
-      if (route.status === 'COMPLETED') return { id, status: route.status, version: route.version };
+      if (route.status === 'COMPLETED')
+        return { response: { id, status: route.status, version: route.version }, pausedDriverId: null };
       if (route.status !== 'ACTIVE')
         throw new DomainError('ROUTE_INVALID_STATE', 'Only active routes can finish');
       if (
@@ -272,9 +275,16 @@ export class RoutesService {
         where: { id: route.driverId },
         data: { status: route.driver.acceptNewOrders ? 'AVAILABLE' : 'PAUSED', currentRouteId: null },
       });
+      if (!route.driver.acceptNewOrders)
+        await tx.driverLocation.deleteMany({ where: { driverId: route.driverId } });
       const updated = await this.changed(tx, completed, 'route.completed', actor.id);
       await this.events.emit(tx, 'RouteCompleted', id, { routeId: id, driverId: route.driverId });
-      return { id, status: updated.status, version: updated.version };
+      return {
+        response: { id, status: updated.status, version: updated.version },
+        pausedDriverId: route.driver.acceptNewOrders ? null : route.driverId,
+      };
     });
+    if (result.pausedDriverId) await this.redis.client.del(`driver:${result.pausedDriverId}:location`);
+    return result.response;
   }
 }

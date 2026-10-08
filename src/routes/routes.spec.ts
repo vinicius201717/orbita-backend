@@ -3,6 +3,7 @@ import { OutboxService } from '../common/outbox.service';
 import { ConfigService } from '../config/config.service';
 import { DeliveryStateMachineService } from '../deliveries/delivery-state-machine.service';
 import { PrismaService } from '../infra/prisma.service';
+import { RedisService } from '../infra/redis.service';
 import { RoutesService } from './routes.service';
 
 describe('Route lifecycle guards', () => {
@@ -11,6 +12,7 @@ describe('Route lifecycle guards', () => {
     {} as ConfigService,
     {} as OutboxService,
     new DeliveryStateMachineService(),
+    {} as RedisService,
   );
   const stops = [
     { id: 'pickup-1', sequence: 0, status: 'COMPLETED', type: 'PICKUP' },
