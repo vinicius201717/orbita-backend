@@ -53,7 +53,7 @@ export class DeliveriesController {
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary:
-      'Rotate and reveal an offline customer PIN only to the business before assignment; hand it privately to the customer',
+      'Privately retrieve the stable customer PIN for an active delivery, including after assignment; never share with the driver',
   })
   customerCode(@CurrentActor() actor: Actor, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.customerCode(actor, id);

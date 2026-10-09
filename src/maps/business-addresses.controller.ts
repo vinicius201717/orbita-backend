@@ -36,11 +36,11 @@ export class BusinessAddressesController {
   @ApiOperation({ summary: 'Find delivery address candidates; the merchant must confirm the destination' })
   async search(@CurrentActor() actor: Actor, @Body() dto: AddressSearchDto) {
     if (
-      !actor.businessId ||
-      !(await this.db.business.findFirst({
+      (!actor.businessId && actor.role !== 'BUSINESS_OWNER') ||
+      (actor.businessId && !(await this.db.business.findFirst({
         where: { id: actor.businessId, active: true },
         select: { id: true },
-      }))
+      })))
     )
       throw new DomainError(
         'BUSINESS_REQUIRED',
@@ -56,7 +56,7 @@ export class BusinessAddressesController {
     const count = await this.redis.client.eval(
       "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],60) end; return n",
       1,
-      `address-search:${actor.businessId}`,
+      `address-search:${actor.businessId ?? `onboarding:${actor.id}`}`,
     );
     if (Number(count) > 20)
       throw new DomainError('RATE_LIMITED', 'Aguarde um minuto antes de buscar outro endereço.', 429);

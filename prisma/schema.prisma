@@ -399,6 +399,7 @@ model Delivery {
   driverPayoutCents             Int                                   @default(0)
   tipCents                      Int                                   @default(0)
   verificationCodeHash          String
+  customerCodeCiphertext        String?
   verificationAttempts          Int                                   @default(0)
   verifiedAt                    DateTime?                             @db.Timestamptz(3)
   lockedAt                      DateTime?                             @db.Timestamptz(3)

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
+import { isIP } from 'node:net';
 
 const bool = (fallback: boolean) =>
   z
@@ -16,6 +17,11 @@ export const environmentSchema = z
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
     CORS_ORIGINS: z.string().min(1),
+    TRUST_PROXY_CIDRS: z.string().default('').refine((value) => value.split(',').filter((part) => part.trim()).every((part) => {
+      const [address, mask, ...extra] = part.trim().split('/');
+      const family = isIP(address ?? '');
+      return !extra.length && family !== 0 && (mask === undefined || (/^\d+$/.test(mask) && Number(mask) > 0 && Number(mask) <= (family === 4 ? 32 : 128)));
+    }), 'Use explicit proxy IPs or CIDRs; global trust and hop counts are not allowed'),
     JWT_SECRET: z.string().min(32),
     JWT_REFRESH_SECRET: z.string().min(32),
     PIN_PEPPER: z.string().min(32),
@@ -94,6 +100,18 @@ export const environmentSchema = z
         code: 'custom',
         path: ['MAPS_PROVIDER'],
         message: 'Production requires road-network estimates',
+      });
+    if (env.NODE_ENV === 'production' && !env.PUBLIC_BASE_URL.startsWith('https://'))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PUBLIC_BASE_URL'],
+        message: 'Production links must use HTTPS',
+      });
+    if (env.NODE_ENV === 'production' && env.CORS_ORIGINS.split(',').some((origin) => !origin.trim().startsWith('https://')))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CORS_ORIGINS'],
+        message: 'Production CORS origins must use HTTPS',
       });
   });
 export type Environment = z.infer<typeof environmentSchema>;

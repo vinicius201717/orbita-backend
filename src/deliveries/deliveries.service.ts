@@ -13,9 +13,11 @@ import { CreateDeliveryDto, DeliveryListDto, UpdateDeliveryDto, VerifyDeliveryDt
 import { DeliveryStateMachineService } from './delivery-state-machine.service';
 
 const freeStatuses = ['WAITING_POOL', 'MATCHING', 'OFFERED'];
+const customerCodeStatuses = ['CREATED', ...freeStatuses, 'ASSIGNED', 'PICKUP_PENDING', 'PICKED_UP', 'IN_TRANSIT', 'ARRIVING'];
 export function deliveryView(delivery: Delivery, actor: Actor) {
   const {
     verificationCodeHash: _pin,
+    customerCodeCiphertext: _privateCode,
     customerConfirmationTokenHash: _token,
     confirmationExpiresAt: _expires,
     verificationAttempts: _attempts,
@@ -134,6 +136,7 @@ export class DeliveriesService {
           dto.maxDeliveryDurationSeconds ?? this.config.get('DEFAULT_MAX_DELIVERY_SECONDS'),
         revenueCents: this.config.get('BASE_REVENUE_CENTS'),
         verificationCodeHash: this.crypto.hash(`${id}:${pin}`),
+        customerCodeCiphertext: this.crypto.encrypt({ deliveryId: id, code: pin }),
         customerConfirmationTokenHash: this.crypto.hash(`confirmation:${confirmation}`),
         confirmationExpiresAt: new Date(deliveryDeadline.getTime() + 86400000),
       },
@@ -195,29 +198,62 @@ export class DeliveriesService {
       await lockEntities(tx, [`delivery:${id}`]);
       const delivery = await tx.delivery.findUniqueOrThrow({ where: { id } });
       this.assertBusiness(actor, delivery.businessId);
-      if (!freeStatuses.includes(delivery.status) || delivery.driverId || delivery.routeId)
+      if (!customerCodeStatuses.includes(delivery.status) || !delivery.confirmationExpiresAt || delivery.confirmationExpiresAt <= new Date())
         throw new DomainError(
           'CUSTOMER_CODE_UNAVAILABLE',
-          'Generate the offline customer code before assignment',
+          'Customer code is unavailable for closed or expired deliveries',
         );
-      if (delivery.customerPhone && delivery.customerOptInAt)
-        throw new DomainError(
-          'CUSTOMER_CODE_SENT',
-          'Customer receives the private code through the authorized messaging channel',
-        );
-      const code = this.crypto.pin();
-      await tx.delivery.update({
-        where: { id },
-        data: {
-          verificationCodeHash: this.crypto.hash(`${id}:${code}`),
-          verificationAttempts: 0,
-          lockedAt: null,
-        },
-      });
+      if (delivery.lockedAt || delivery.verificationAttempts >= this.config.get('PIN_MAX_ATTEMPTS'))
+        throw new DomainError('PIN_LOCKED', 'Verification attempts exhausted; contact support', 400);
+      let code: string;
+      let rotated = false;
+      if (delivery.customerCodeCiphertext) {
+        let recovered: { deliveryId?: unknown; code?: unknown };
+        try {
+          recovered = this.crypto.decrypt(delivery.customerCodeCiphertext) as {
+            deliveryId?: unknown;
+            code?: unknown;
+          };
+        } catch {
+          throw new DomainError('CUSTOMER_CODE_UNAVAILABLE', 'Customer code recovery requires support', 503);
+        }
+        if (recovered.deliveryId !== id || typeof recovered.code !== 'string' || !this.crypto.matches(`${id}:${recovered.code}`, delivery.verificationCodeHash))
+          throw new DomainError('CUSTOMER_CODE_UNAVAILABLE', 'Customer code recovery requires support', 503);
+        code = recovered.code;
+      } else {
+        // Older deliveries only stored the hash. Recover a still-encrypted queued message first.
+        // Claim the outbox row before examining it: a dispatcher may already be sending the old PIN.
+        const key = `delivery-pin:${id}`;
+        const rows = await tx.$queryRaw<Array<{ payload: string; status: string }>>`SELECT payload, status FROM "MessageOutbox" WHERE "idempotencyKey"=${key} FOR UPDATE`;
+        const queued = rows[0];
+        let decoded: { text?: unknown } | null = null;
+        if (queued?.payload) {
+          try {
+            decoded = this.crypto.decrypt(queued.payload) as { text?: unknown };
+          } catch {
+            decoded = null;
+          }
+        }
+        const legacyCode = typeof decoded?.text === 'string' ? /código de entrega é (\d{4})\./.exec(decoded.text)?.[1] : undefined;
+        if (legacyCode && this.crypto.matches(`${id}:${legacyCode}`, delivery.verificationCodeHash)) {
+          code = legacyCode;
+        } else {
+          if (queued?.status === 'SENDING')
+            throw new DomainError('CUSTOMER_CODE_PENDING', 'A customer message is being sent; retry shortly', 409);
+          code = this.crypto.pin();
+          rotated = true;
+          // Prevent an obsolete queued code from being delivered after recovery.
+          await tx.messageOutbox.updateMany({ where: { idempotencyKey: key }, data: { status: 'FAILED', attempts: 10, leaseUntil: null, payload: '', lastErrorCode: 'CUSTOMER_CODE_RECOVERED_PRIVATELY' } });
+        }
+        await tx.delivery.update({ where: { id }, data: {
+          customerCodeCiphertext: this.crypto.encrypt({ deliveryId: id, code }),
+          ...(rotated ? { verificationCodeHash: this.crypto.hash(`${id}:${code}`) } : {}),
+        } });
+      }
       await tx.auditLog.create({
         data: {
           actorId: actor.id,
-          action: 'delivery.customer_code_rotated',
+          action: rotated ? 'delivery.customer_code_recovered' : 'delivery.customer_code_viewed',
           entityType: 'Delivery',
           entityId: id,
         },
@@ -226,7 +262,7 @@ export class DeliveriesService {
         deliveryId: id,
         code,
         instructions:
-          'Provide this code privately to the customer before pickup. Never share with the driver.',
+          `${rotated ? 'This code replaces the previous one. ' : ''}Provide this code privately to the customer. Never share it with the driver; the customer provides it only after receiving the order.`,
       };
     });
   }
@@ -422,7 +458,7 @@ export class DeliveriesService {
     });
     const result = await tx.delivery.update({
       where: { id: delivery.id },
-      data: { status: 'DELIVERED', deliveredAt: now, verifiedAt: now },
+      data: { status: 'DELIVERED', deliveredAt: now, verifiedAt: now, customerCodeCiphertext: null },
     });
     await tx.routeStop.update({ where: { id: stop.id }, data: { status: 'COMPLETED', completedAt: now } });
     await tx.route.update({ where: { id: delivery.routeId }, data: { version: { increment: 1 } } });

@@ -39,6 +39,7 @@ export class CancellationService {
         data: {
           status,
           cancellationReason: reason,
+          ...(status !== 'WAITING_POOL' ? { customerCodeCiphertext: null } : {}),
           ...(status === 'WAITING_POOL' ? { driverId: null, routeId: null, driverPayoutCents: 0 } : {}),
         },
       });
@@ -115,7 +116,7 @@ export class CancellationService {
           403,
         );
       const status = complete ? 'RETURNED' : 'RETURNING';
-      await tx.delivery.update({ where: { id }, data: { status } });
+      await tx.delivery.update({ where: { id }, data: { status, customerCodeCiphertext: null } });
       if (complete) {
         await tx.driver.update({
           where: { id: d.driverId },

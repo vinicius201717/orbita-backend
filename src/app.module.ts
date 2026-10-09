@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { InfraModule } from './infra/infra.module';
 import { HealthController } from './health/health.controller';
 import { AuthModule } from './auth/auth.module';
+import { AuthGuard } from './auth/auth.guard';
 import { BusinessesModule } from './businesses/businesses.module';
 import { RateLimitGuard } from './common/rate-limit.guard';
 import { LoggingMiddleware } from './common/logging.middleware';
@@ -41,7 +42,11 @@ import { MerchantModule } from './merchant/merchant.module';
     JobsModule,
   ],
   controllers: [HealthController, PrivacyController, MetricsController],
-  providers: [{ provide: APP_GUARD, useClass: RateLimitGuard }],
+  // Resolve and authorize the actor before selecting their private request quota.
+  providers: [
+    { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: RateLimitGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

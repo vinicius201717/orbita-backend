@@ -9,6 +9,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$disconnect();
   }
   async transaction<T>(action: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    // Serializable writes intentionally retry transient PostgreSQL serialization
+    // failures. A short backoff prevents concurrent route acceptance from
+    // immediately colliding on the same route-stop rows again.
     for (let attempt = 0; ; attempt++) {
       try {
         return await this.$transaction(action, {
@@ -20,9 +23,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         if (
           !(error instanceof Prisma.PrismaClientKnownRequestError) ||
           error.code !== 'P2034' ||
-          attempt >= 3
+          attempt >= 5
         )
           throw error;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(250, 25 * 2 ** attempt)));
       }
     }
   }

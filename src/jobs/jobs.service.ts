@@ -88,6 +88,13 @@ export class JobsService implements OnModuleDestroy {
     } else if (job.name === 'retention') {
       await this.tracking.retention();
       const cutoff = new Date(Date.now() - 30 * 86400000);
+      await this.db.delivery.updateMany({
+        where: { customerCodeCiphertext: { not: null }, OR: [
+          { status: { in: ['DELIVERED', 'FAILED', 'CANCELLED', 'RETURN_REQUIRED', 'RETURNING', 'RETURNED'] } },
+          { confirmationExpiresAt: { lt: new Date() } },
+        ] },
+        data: { customerCodeCiphertext: null },
+      });
       await this.db.messageOutbox.updateMany({
         where: { createdAt: { lt: cutoff } },
         data: { payload: '', recipient: 'redacted' },

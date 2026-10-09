@@ -5,6 +5,8 @@ import { ConfigService } from './config/config.service';
 import { ApiExceptionFilter } from './common/exception.filter';
 export function configureApp(app: INestApplication) {
   const config = app.get(ConfigService);
+  const trustedProxies = config.get('TRUST_PROXY_CIDRS').split(',').map((value) => value.trim()).filter(Boolean);
+  app.getHttpAdapter().getInstance().set('trust proxy', trustedProxies.length ? trustedProxies : false);
   app.setGlobalPrefix('api/v1');
   app.use(helmet());
   app.use(

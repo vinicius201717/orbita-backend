@@ -20,8 +20,12 @@ export class HealthController {
   @Get('ready') async ready() {
     try {
       await Promise.all([this.db.$queryRaw`SELECT PostGIS_Version()`, this.redis.client.ping()]);
-      return { status: 'ok', postgres: 'up', postgis: 'up', redis: 'up', queue: await this.jobs.health() };
-    } catch {
+      const queue = await this.jobs.health();
+      if (queue.worker !== 'up')
+        throw new ServiceUnavailableException({ code: 'WORKER_NOT_READY', message: 'Operational worker unavailable' });
+      return { status: 'ok', postgres: 'up', postgis: 'up', redis: 'up', queue };
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) throw error;
       throw new ServiceUnavailableException({ code: 'NOT_READY', message: 'Infrastructure unavailable' });
     }
   }

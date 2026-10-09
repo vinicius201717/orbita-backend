@@ -44,13 +44,21 @@ describe('logistics E2E and real transaction races', () => {
     const code = '4821';
     await db.delivery.update({
       where: { id: created.id },
-      data: { verificationCodeHash: app.get(CryptoService).hash(`${created.id}:${code}`) },
+      data: {
+        verificationCodeHash: app.get(CryptoService).hash(`${created.id}:${code}`),
+        customerCodeCiphertext: app.get(CryptoService).encrypt({ deliveryId: created.id, code }),
+      },
     });
     return { ...created, code };
   }
   it('creates delivery, matches, executes route, verifies PIN and credits ledger once', async () => {
     const f = await fixture();
     const d = await delivery(f);
+    const privateCode = await app.get(DeliveriesService).customerCode(f.business.actor, d.id);
+    expect(privateCode.code).toBe(d.code);
+    await expect(app.get(DeliveriesService).customerCode(f.driver.actor, d.id)).rejects.toThrow(
+      'Business operation not permitted',
+    );
     const matching = app.get(MatchingEngineService);
     const offers = app.get(OffersService);
     const offer = await matching.matchDelivery(d.id);
