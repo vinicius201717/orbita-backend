@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../src/infra/prisma.service';
+import { RedisService } from '../../src/infra/redis.service';
 import { AuthService } from '../../src/auth/auth.service';
 import { TrackingService } from '../../src/tracking/tracking.service';
 import { DriversService } from '../../src/drivers/drivers.service';
@@ -14,8 +15,28 @@ describe('real API auth, tenancy and GPS', () => {
   afterAll(async () => {
     await app?.close();
   });
-  it('checks PostgreSQL, PostGIS and Redis readiness', async () => {
-    await request(app.getHttpServer()).get('/api/v1/health/ready').expect(200);
+  it('requires a current worker heartbeat as well as PostgreSQL, PostGIS and Redis', async () => {
+    const redis = app.get(RedisService).client;
+    const heartbeatKey = 'orbita:worker:heartbeat';
+    // Use the isolated test Redis directly: readiness must not depend on suite
+    // execution order or on a developer's separately running worker.
+    await redis.del(heartbeatKey);
+    try {
+      await request(app.getHttpServer()).get('/api/v1/health/ready').expect(503);
+      await redis.set(heartbeatKey, String(Date.now() - 61000), 'EX', 60);
+      await request(app.getHttpServer()).get('/api/v1/health/ready').expect(503);
+      await redis.set(heartbeatKey, String(Date.now()), 'EX', 60);
+      await request(app.getHttpServer())
+        .get('/api/v1/health/ready')
+        .expect(200)
+        .expect((response) => {
+          expect(response.body).toMatchObject({
+            postgres: 'up', postgis: 'up', redis: 'up', queue: { worker: 'up' },
+          });
+        });
+    } finally {
+      await redis.del(heartbeatKey);
+    }
     const geo = await app.get(PrismaService).$queryRaw<
       Array<{ distance: number }>
     >`SELECT ST_Distance(ST_MakePoint(-49.25,-16.68)::geography,ST_MakePoint(-49.25,-16.681)::geography) AS distance`;

@@ -262,7 +262,7 @@ export class DeliveriesService {
         deliveryId: id,
         code,
         instructions:
-          `${rotated ? 'This code replaces the previous one. ' : ''}Provide this code privately to the customer. Never share it with the driver; the customer provides it only after receiving the order.`,
+          `${rotated ? 'Este código substitui o anterior. ' : ''}Envie este código em particular ao cliente. Nunca compartilhe com o entregador; o cliente deve informá-lo somente depois de receber o pedido.`,
       };
     });
   }
@@ -453,12 +453,15 @@ export class DeliveriesService {
     )
       throw new DomainError('STOP_OUT_OF_SEQUENCE', 'Complete earlier stops first');
     const now = new Date();
-    await tx.deliveryProof.create({
-      data: { deliveryId: delivery.id, method, verifiedAt: now, latitude, longitude },
-    });
+    // Advisory locks do not refresh a Serializable transaction's snapshot. Write
+    // the existing delivery before inserting its unique proof so a concurrent
+    // completion produces a serialization retry, which then sees DELIVERED.
     const result = await tx.delivery.update({
       where: { id: delivery.id },
       data: { status: 'DELIVERED', deliveredAt: now, verifiedAt: now, customerCodeCiphertext: null },
+    });
+    await tx.deliveryProof.create({
+      data: { deliveryId: delivery.id, method, verifiedAt: now, latitude, longitude },
     });
     await tx.routeStop.update({ where: { id: stop.id }, data: { status: 'COMPLETED', completedAt: now } });
     await tx.route.update({ where: { id: delivery.routeId }, data: { version: { increment: 1 } } });

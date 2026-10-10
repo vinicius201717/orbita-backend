@@ -5,7 +5,7 @@ import { HealthController } from './health/health.controller';
 import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/auth.guard';
 import { BusinessesModule } from './businesses/businesses.module';
-import { RateLimitGuard } from './common/rate-limit.guard';
+import { PreAuthRateLimitGuard, RateLimitGuard } from './common/rate-limit.guard';
 import { LoggingMiddleware } from './common/logging.middleware';
 import { DeliveriesModule } from './deliveries/deliveries.module';
 import { DriversModule } from './drivers/drivers.module';
@@ -42,8 +42,9 @@ import { MerchantModule } from './merchant/merchant.module';
     JobsModule,
   ],
   controllers: [HealthController, PrivacyController, MetricsController],
-  // Resolve and authorize the actor before selecting their private request quota.
+  // Bound authentication work first, then apply independent private actor quotas.
   providers: [
+    { provide: APP_GUARD, useClass: PreAuthRateLimitGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: RateLimitGuard },
   ],

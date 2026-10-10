@@ -91,6 +91,8 @@ wsl -d Ubuntu -u root -- env ORBITA_POSTGRES_PORT=54329 bash ./scripts/dev-infra
 
 Valores de dinheiro são centavos inteiros; distância em metros, duração em segundos, peso em gramas, volume em cm³. Datas são UTC e a unidade possui timezone. Configurações inválidas impedem startup. `REAL_PAYMENTS_ENABLED=true` também impede startup: **nenhum PIX ou pagamento externo está implementado**.
 
+Antes da autenticação, a API aplica um teto de abuso de 6.000 requisições por minuto por origem; tentativas que retornam 401/403 também consomem esse orçamento. Depois da autenticação, as cotas usuais são individuais por usuário/endpoint, permitindo várias contas pelo mesmo BFF. O teto por origem é compartilhado e deve ser medido no teste de carga. `TRUST_PROXY_CIDRS` aceita somente IPs/CIDRs de proxies controlados; sem configuração, cabeçalhos `X-Forwarded-For` não definem a origem. Falha do Redis impede requisições protegidas com 503. Endpoints de saúde ficam fora dessas cotas.
+
 ## Fluxo operacional
 
 1. Cadastre `BUSINESS_OWNER` ou `DRIVER` em `POST /auth/register` e faça login. `GET /auth/me` retorna a identidade atual; `PATCH /auth/me` atualiza nome/telefone e `POST /auth/change-password` troca a senha e encerra tokens anteriores. ADMIN não pode ser criado pelo cadastro público; use o seed local ou provisionamento administrativo controlado.

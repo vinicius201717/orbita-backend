@@ -6,6 +6,29 @@ import { DomainError } from './domain-error';
 import { Actor } from './actor';
 const increment =
   "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],ARGV[1]) end; return n";
+const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+// An abuse ceiling for the whole trusted source, not the normal per-user quota.
+// Shared BFFs must have room for many independently limited authenticated users.
+export const PRE_AUTH_SOURCE_LIMIT = 6000;
+@Injectable()
+export class PreAuthRateLimitGuard implements CanActivate {
+  constructor(private readonly redis: RedisService) {}
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (context.getClass().name === 'HealthController') return true;
+    const request = context.switchToHttp().getRequest<Request>();
+    // Express resolves this only through bootstrap's explicit proxy allowlist.
+    const ip = request.ip ?? request.socket.remoteAddress ?? 'unknown';
+    let count: unknown;
+    try {
+      count = await this.redis.client.eval(increment, 1, `rate:pre-auth:${digest(ip)}`, 60);
+    } catch {
+      throw new DomainError('RATE_LIMIT_UNAVAILABLE', 'Please retry shortly', 503);
+    }
+    if (Number(count) > PRE_AUTH_SOURCE_LIMIT)
+      throw new DomainError('RATE_LIMITED', 'Request limit reached', 429);
+    return true;
+  }
+}
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   constructor(private readonly redis: RedisService) {}
@@ -34,7 +57,6 @@ export class RateLimitGuard implements CanActivate {
     const refresh = authEndpoint && context.getHandler().name === 'refresh' && typeof body?.refreshToken === 'string'
       ? body.refreshToken : null;
     const identity = request.actor ? `actor:${request.actor.id}` : email ? `account:${email}` : refresh ? `refresh:${refresh}` : `ip:${ip}`;
-    const digest = (value: string) => createHash('sha256').update(value).digest('hex');
     let counts: unknown[];
     try {
       counts = await Promise.all([

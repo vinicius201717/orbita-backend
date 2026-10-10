@@ -13,6 +13,7 @@ import { CryptoService } from '../../src/common/crypto.service';
 import { CancellationService } from '../../src/incidents/cancellation.service';
 import { ConfigService } from '../../src/config/config.service';
 import { PlanningService } from '../../src/matching/planning.service';
+import { lockEntities } from '../../src/common/locks';
 describe('logistics E2E and real transaction races', () => {
   let app: INestApplication;
   let db: PrismaService;
@@ -51,6 +52,45 @@ describe('logistics E2E and real transaction races', () => {
     });
     return { ...created, code };
   }
+  async function raceConfirmations<T>(id: string, actions: Array<() => Promise<T>>): Promise<T[]> {
+    let release!: () => void;
+    let acquired!: (pid: number) => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const ready = new Promise<number>((resolve) => { acquired = resolve; });
+    const holder = db.$transaction(async (tx) => {
+      await lockEntities(tx, [`delivery:${id}`]);
+      const [row] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+      if (!row) throw new Error('Missing lock-holder PID');
+      acquired(row.pid);
+      await gate;
+    }, { timeout: 15000 });
+    const pid = await Promise.race([ready, holder.then(() => { throw new Error('Lock holder ended early'); })]);
+    const results = Promise.allSettled(actions.map((action) => action()));
+    try {
+      // Both calls must establish their snapshots before either may complete.
+      // Waiting on the actual PostgreSQL lock makes the regression deterministic.
+      let waiting = 0;
+      const deadline = Date.now() + 5000;
+      while (waiting < actions.length && Date.now() < deadline) {
+        const [row] = await db.$queryRaw<Array<{ count: number }>>`
+          SELECT count(*)::int AS count FROM pg_locks waiting
+          JOIN pg_locks held ON held.locktype=waiting.locktype
+            AND held.database=waiting.database AND held.classid=waiting.classid
+            AND held.objid=waiting.objid AND held.objsubid=waiting.objsubid
+          WHERE held.pid=${pid} AND held.locktype='advisory' AND held.granted AND NOT waiting.granted`;
+        waiting = row?.count ?? 0;
+        if (waiting < actions.length) await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(waiting).toBe(actions.length);
+    } finally {
+      release();
+      await holder;
+    }
+    return (await results).map((result) => {
+      if (result.status === 'rejected') throw result.reason;
+      return result.value;
+    });
+  }
   it('creates delivery, matches, executes route, verifies PIN and credits ledger once', async () => {
     const f = await fixture();
     const d = await delivery(f);
@@ -86,12 +126,15 @@ describe('logistics E2E and real transaction races', () => {
     );
     await expect(app.get(DeliveriesService).verify(f.driver.actor, d.id, { code: '0000' })).rejects.toThrow();
     expect((await db.delivery.findUniqueOrThrow({ where: { id: d.id } })).verificationAttempts).toBe(1);
-    const confirmations = await Promise.all([
-      app.get(DeliveriesService).verify(f.driver.actor, d.id, { code: d.code }),
-      app.get(DeliveriesService).verify(f.driver.actor, d.id, { code: d.code }),
+    const confirmations = await raceConfirmations(d.id, [
+      () => app.get(DeliveriesService).verify(f.driver.actor, d.id, { code: d.code }),
+      () => app.get(DeliveriesService).verify(f.driver.actor, d.id, { code: d.code }),
     ]);
     expect(confirmations.every((v) => v.status === 'DELIVERED')).toBe(true);
+    expect(await db.deliveryProof.count({ where: { deliveryId: d.id } })).toBe(1);
     expect(await db.driverEarning.count({ where: { deliveryId: d.id } })).toBe(1);
+    expect(await db.auditLog.count({ where: { entityId: d.id, action: 'delivery.delivered' } })).toBe(1);
+    expect((await db.driver.findUniqueOrThrow({ where: { id: f.driver.actor.driverId ?? '' } })).currentCapacityUnits).toBe(0);
     const ledger = await db.ledgerTransaction.findUniqueOrThrow({
       where: { idempotencyKey: `delivery-earning:${d.id}` },
       include: { entries: true },
