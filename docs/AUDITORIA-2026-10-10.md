@@ -77,3 +77,11 @@ A auditoria de dependências frontend retornou zero alertas; mobile retornou 18 
 Na entrada da revisão, o [CI backend](https://github.com/vinicius201717/orbita-backend/actions/runs/37982844912) havia falhado em R04/R05; 44 de 46 testes de integração passaram naquela execução. Não havia execuções retornadas pelo GitHub Actions do frontend, apesar do workflow ativo. Foi adicionado `workflow_dispatch` ao frontend para permitir execução explícita e conferir o resultado antes de promoção.
 
 Ordem sugerida: **concluir HTTPS/sessões → validar operação publicada → fechar backups/alertas → homologar pagamentos em sandbox → distribuir e testar o app → liberar piloto controlado**. O esquema de cobrança diária é provisório, sujeito à preferência do usuário; nenhuma cobrança foi iniciada.
+
+### Fechamento de validação — 10/10/2026
+
+- Código backend `8ed688f`: [GitHub Actions aprovado](https://github.com/vinicius201717/orbita-backend/actions/runs/38043017010), incluindo migrations no banco isolado, integração e auditoria de dependências. `npm audit --omit=dev` também retornou zero alertas localmente.
+- Código frontend `7a79afb`: [GitHub Actions aprovado](https://github.com/vinicius201717/orbita-frontend/actions/runs/38043085039), incluindo lint, tipos, 103 testes e build. Execução disparada manualmente via `workflow_dispatch`; o disparo automático por push continua pendente de comprovação.
+- Os commits de código foram enviados para `codex/development` e `codex/production` nos respectivos repositórios, após os checks. Isso **não implanta o backend na EC2** nem fornece as variáveis de conexão ausentes.
+- Mobile permanece no commit `948ec80`, sem alterações nesta rodada e sem publicação remota.
+- Preview Vercel do frontend corrigido concluído. A publicação de produção e o teste anônimo final devem ser conferidos no fechamento da entrega; a configuração de API/sessões continua sendo o bloqueador funcional identificado.
